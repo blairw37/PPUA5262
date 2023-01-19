@@ -1,4 +1,4 @@
-# PPUA5262
+# PPUA5262 - Big Data
 Northeastern University Big Data Course
 
 This repository contains the outputs from my weekly assignments. 
