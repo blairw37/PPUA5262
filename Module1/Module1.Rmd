@@ -2,7 +2,8 @@
 title: "Module 1- Telling a Data Story"
 author: "Blair Wong"
 date: "2023-01-18"
-output: html_document
+output:
+  word_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -18,12 +19,12 @@ require(tidyverse)
 The Craigslist Postings data retrieved from [BARI](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/52WSPT) is comprised of two parts: listing-level data (`CRAIGSLIST.Listings.csv`), and listing data that has been aggregated across census tracts (`CRAIGSLIST.CT.csv`). This analysis will focus on `craigslist_listings`. 
 
 ```{r}
-craigslist_listings<-read.csv('dataverse_files/CRAIGSLIST.Listings.csv')
+craigslist_listings<-read.csv('../dataverse_files/CRAIGSLIST.Listings.csv')
 ```
 
 The `craigslist_listings` data set contains 205,450 observations and 14 columns.
 
-```{r craigslist_listings,echo=FALSE}
+```{r craigslist_listings}
 dim(craigslist_listings)
 ```
 
@@ -56,7 +57,7 @@ craigslist_listings_subset<-craigslist_listings_subset %>% mutate(PRICE_PER_SQ_F
 ```
 
 Using the `craigslist_listings_subset`, I then selected the first three rows to analyze.
-```{r echo=FALSE}
+```{r}
 head(craigslist_listings_subset,3)
 ```
 
@@ -70,8 +71,8 @@ The `PRICE_PER_SQ_FT` variable indicates that Allston has the highest price per 
 
 ### Interpretation
 
-Although the dates are the same for all three of the selected listings, the general data set can provide helpful information on how listing prices have changed from before the COVID-19 pandemic and throughout it. Also, the frequency of each neighborhood or city listed under `LOCATION` can provide helpful information on which areas have more people moving in and out. The neighborhoods with high turnover at certain months (such as September) might show that certain neighborhoods have a higher percentage of students. The data related to turnover might also provide information on which neighborhoods saw the most people leave during the pandemic, which ultimately indicates a certain level of economic security (having the means to move without significant saving and planning).
+Although the dates are the same for all three of the selected listings, the general data set can provide helpful information on how listing prices have changed from before the COVID-19 pandemic and throughout it. Also, the frequency of each neighborhood or city listed under `LOCATION` can provide helpful information on which areas have more people moving in and out. The neighborhoods with high turnover at certain months (such as September) might show that certain neighborhoods have a higher percentage of students. The data related to turnover might also provide information on which neighborhoods saw the most people leave during the pandemic, which ultimately indicates a certain level of economic security (having the means to move without significant saving and planning) or those who were being evicted when moratoriums were not in place.
 
 ### Implications
 
-Ultimately, this data set is helpful for providing in depth information on renters in Boston. It can potentially show which renters have greater economic security, where the transient renters tend to live, and where the highest demand locations are. This information can then be used to provide more tailored support to renters throughout the different neighborhoods and cities.
+Ultimately, this data set is helpful for providing in depth information on renters in Boston. It can potentially show economic security, where the transient renters tend to live, and where the highest demand locations are. This information can then be used to provide more tailored support to renters throughout the different neighborhoods and cities.
