@@ -1,0 +1,78 @@
+---
+title: "Module 1- Telling a Data Story"
+author: "Blair Wong"
+date: "2023-01-18"
+output:
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-packages, include=FALSE}
+require(tidyverse)
+```
+
+### Background
+
+The Craigslist Postings data retrieved from [BARI](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/52WSPT) is comprised of two parts: listing-level data (`CRAIGSLIST.Listings.csv`), and listing data that has been aggregated across census tracts (`CRAIGSLIST.CT.csv`). This analysis will focus on `craigslist_listings`. 
+
+```{r}
+craigslist_listings<-read.csv('../dataverse_files/CRAIGSLIST.Listings.csv')
+```
+
+The `craigslist_listings` data set contains 205,450 observations and 14 columns.
+
+```{r craigslist_listings}
+dim(craigslist_listings)
+```
+
+The variables for `craigslist_listings` are listed below. Some of the notable variables are `PRICE`, `AREA_SQFT`, `LOCATION`, `LISTING_YEAR`, and `LISTING_MONTH`.
+
+```{r echo=FALSE}
+names(craigslist_listings)
+```
+
+### Methods
+
+The subset I will focus on will be observations in the Boston metro area, containing the columns: `LISTING_ID`, `LISTING_YEAR`, `LISTING_MONTH`, `LOCATION`, `AREA_SQFT`, and `PRICE`.
+
+To find the relevant neighborhoods and cities, I created a list of strings containing the neighborhood and city names.
+
+```{r}
+greater_boston_cities<- list('Allston','Back Bay','Bay Village','Beacon Hill','Brighton','Charlestown','Chinatown','Dorchester','Downtown','East Boston','Fenway-Kenmore','Hyde Park','Jamaica Plain','Mattapan','Mission Hill','North End','Roslindale','Roxbury','South Boston','South End','West End','West Roxbury', 'Wharf District','Cambridge','Somerville','Everett','Chelsea','Revere','Quincy','Watertown','Brookline')
+```
+
+Using this list, I then filtered the locations that contained the neighborhoods and cities in the `greater_boston_cities` list, and removed the listings without square footage. The `craigslist_listings_subset` contains 16,176 records and 6 columns.
+
+```{r}
+craigslist_listings_subset<-craigslist_listings %>% filter(LOCATION!='',LOCATION %in% greater_boston_cities,!is.na(AREA_SQFT)) %>% select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LOCATION,AREA_SQFT,PRICE)
+```
+
+I also added a new column for the price per square foot, `PRICE_PER_SQ_FT`.
+
+```{r}
+craigslist_listings_subset<-craigslist_listings_subset %>% mutate(PRICE_PER_SQ_FT=PRICE/AREA_SQFT)
+```
+
+Using the `craigslist_listings_subset`, I then selected the first three rows to analyze.
+```{r}
+head(craigslist_listings_subset,3)
+```
+
+### Analysis
+
+The top three rows were all listed in May 2020, but in different neighborhoods (Roslindale, Quincy, and Allston). The Roslindale and Allston listings have similar square footage (1,263 sq ft and 1,103 sq ft respectively), while the Quincy listing is only 750 sq ft. Although the Roslindale and Allston listings have similar square footage, they differ in price, with Roslindale being listed at $2,300 per month and Allston at $3,500 per month. The Quincy listing was listed at $1,700 per month.
+
+Since Allston and Roslindale have similar square footage but significantly different listing prices, this indicates that the Allston neighborhood may have higher demand from renters. Because Quincy has a smaller square footage, it is difficult to compare with the other two locations. However, to compare more effectively, we can use the calculated price per square footage in the `PRICE_PER_SQ_FT` variable.
+
+The `PRICE_PER_SQ_FT` variable indicates that Allston has the highest price per square foot, while Roslindale has the lowest price per square foot. This further highlights the difference in demand between Roslindale and Allston, and it places Quincy in the middle. 
+
+### Interpretation
+
+Although the dates are the same for all three of the selected listings, the general data set can provide helpful information on how listing prices have changed from before the COVID-19 pandemic and throughout it. Also, the frequency of each neighborhood or city listed under `LOCATION` can provide helpful information on which areas have more people moving in and out. The neighborhoods with high turnover at certain months (such as September) might show that certain neighborhoods have a higher percentage of students. The data related to turnover might also provide information on which neighborhoods saw the most people leave during the pandemic, which ultimately indicates a certain level of economic security (having the means to move without significant saving and planning) or those who were being evicted when moratoriums were not in place.
+
+### Implications
+
+Ultimately, this data set is helpful for providing in depth information on renters in Boston. It can potentially show economic security, where the transient renters tend to live, and where the highest demand locations are. This information can then be used to provide more tailored support to renters throughout the different neighborhoods and cities.
