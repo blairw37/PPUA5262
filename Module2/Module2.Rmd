@@ -156,10 +156,13 @@ ggplot(allows_cats_df, aes(x = "", y = Percentage, fill = AllowsCats)) + geom_co
 ### Analysis
 
 #### Price & Square Footage
+Looking at the initial summary table for price and square footage, there are some values that do not make sense. First, the lowest price for rent is $70, which does not seem reasonable for a listing. Since there are only 17 listings below $400 and there are 62 listings below $500, it seems as though anything below $400 can be considered an outlier. For square footage, a similar process was undertaken to eliminate any listings that were above 3,000 square feet. The lower cut off for square footage is 100 square feet, which is about the size of a parking space. Although 100 square feet is unreasonable for an entire apartment, some of the listings may be for just one bedroom, which means that although small, 100 square feet could be the size of a bedroom. By mandating a minimum value, the NA values for square footage were also eliminated.
 
+Comparing the two summary tables, it appears as though the mean and median prices for rent went up slightly (from $2391.70 to $2487.40 and $2250 to $2375 respectively). This makes sense given that we removed the values lower than $400. For square footage, only the mean changed from 1,179.2 square feet to 935.1 square feet, and the median remained at 900 square feet. This makes sense since we removed the highest values which were significantly skewing the mean. 
 
 ### Interpretation
 
+#### Price & Square Footage
 
 
 ### Implications
