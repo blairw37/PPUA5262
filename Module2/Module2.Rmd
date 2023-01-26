@@ -1,0 +1,199 @@
+---
+title: "Module 2- Pulse of the City"
+author: "Blair Wong"
+date: "2023-01-27"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-packages, include=FALSE}
+library(tidyverse)
+library(forcats)
+library(modelsummary)
+library(formattable)
+```
+
+## Background
+
+The Craigslist Postings data retrieved from [BARI](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/52WSPT) is comprised of two parts: listing-level data (`CRAIGSLIST.Listings.csv`), and listing data that has been aggregated across census tracts (`CRAIGSLIST.CT.csv`). This analysis will focus on `craigslist_listings`. 
+
+```{r}
+craigslist_listings<-read.csv('../dataverse_files/CRAIGSLIST.Listings.csv')
+```
+
+There are 205450 number of observations.
+```{r}
+count(craigslist_listings)
+```
+
+The variables within the data set are listed below:
+```{r}
+names(craigslist_listings)
+```
+
+To better understand the variables, we can investigate the classes of each variable.
+```{r}
+sapply(craigslist_listings, class)
+```
+
+It is worth nothing that `LISTING_MONTH` is a "character". In order to rank the months correctly later on in the analysis, we will have to convert `LISTING_MONTH` to a factor. Additionally, the `ALLOWS_CATS` and `ALLOWS_DOGS` variables are "integers" rather than logical variables. Still, both of these variables only contain 0's and 1's to indicate whether the listing allows pets or not.
+
+As with the previous analysis in "Tell A Data Story", I will focus on listings that are located in Greater Boston. To do so, I created a list of Boston neighborhoods and filtered the listings that did not have a location in the list. After filtering, there are now 46436 listings.
+
+```{r}
+greater_boston_cities<- list('Allston','Back Bay','Bay Village','Beacon Hill','Brighton','Charlestown','Chinatown','Dorchester','Downtown','East Boston','Fenway-Kenmore','Hyde Park','Jamaica Plain','Mattapan','Mission Hill','North End','Roslindale','Roxbury','South Boston','South End','West End','West Roxbury', 'Wharf District','Cambridge','Somerville','Everett','Chelsea','Revere','Quincy','Watertown','Brookline')
+
+craigslist_listings_subset<-craigslist_listings %>% filter(LOCATION!='',LOCATION %in% greater_boston_cities) %>% select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LOCATION,AREA_SQFT,PRICE)
+
+count(craigslist_listings_subset)
+```
+
+## Price & Square Footage
+
+#### Methods
+To better understand the prices & square footage for the listings, we can generate a summary table to describe the basic statistical values of the data. Using the `modelsummary` package, we can see the number of unique values, percentage of missing values, mean, standard deviation, minimum, median, and maximum. The table also provides a histogram to show the distribution of the values as well.
+
+```{r}
+datasummary_skim(craigslist_listings_subset[c('PRICE','AREA_SQFT')])
+```
+
+Given that the lowest rental price is $70, and the lowest square footage is 0 square ft, we can conclude that there is some data that is skewing the results and should be excluded. Also, for `AREA_SQFT`, it appears as though 65% of listings are missing square footage information.
+
+To determine what would be a reasonable cut off for price, we can filter to see how many listings are above a certain price. Since there is a significant jump from number of listings below $400 & $500, we can treat listings under $400 as outliers and exclude them.
+
+```{r}
+count(filter(craigslist_listings_subset, PRICE < 400))
+count(filter(craigslist_listings_subset, PRICE < 500))
+
+craigslist_listings_subset <- filter(craigslist_listings_subset, PRICE > 400)
+```
+
+Looking at the square footage more closely, we can see that the minimum is 0.0 square ft, and the maximum is 710940.0 square ft, both of which are not possible values. Similar to price, we can filter out the outliers. A quick glance at the histogram in the table shows that only a few values are significantly high, which means we can eliminate the maximum value. To determine where the cut off is, I compared the number of listings above 2,000, 3,000, and 4,000 square feet. Since there is a major jump between 2,000 square feet and 3,000 square feet, we can use 3,000 as the maximum cut off. For the minimum, I ensured that the listings had above 100 square footage. A new summary table is created below.
+
+```{r}
+count(filter(craigslist_listings_subset, AREA_SQFT > 4000))
+count(filter(craigslist_listings_subset, AREA_SQFT > 3000))
+count(filter(craigslist_listings_subset, AREA_SQFT > 2000))
+craigslist_listings_subset <- filter(craigslist_listings_subset, AREA_SQFT < 3000)
+craigslist_listings_subset <- filter(craigslist_listings_subset, AREA_SQFT > 100)
+
+datasummary_skim(craigslist_listings_subset[c('PRICE', 'AREA_SQFT')])
+```
+
+#### Analysis
+Looking at the initial summary table for price and square footage, there are some values that do not make sense. First, the lowest price for rent is $70, which does not seem reasonable for a listing. Since there are only 17 listings below $400 and there are 62 listings below $500, it seems as though anything below $400 can be considered an outlier. For square footage, a similar process was undertaken to eliminate any listings that were above 3,000 square feet. The lower cut off for square footage is 100 square feet, which is about the size of a parking space. Although 100 square feet is unreasonable for an entire apartment, some of the listings may be for just one bedroom, which means that although small, 100 square feet is possible. By enforcing a minimum value, the NA values for square footage were also eliminated.
+
+Comparing the two summary tables, it appears as though the mean and median prices for rent went up slightly (from $2391.70 to $2487.40 and $2250 to $2375 respectively). This makes sense given that we removed the values lower than $400. For square footage, only the mean changed from 1,179.2 square feet to 935.1 square feet, and the median remained at 900 square feet. This is reasonable since we removed the highest values which were significantly skewing the mean. Also, since we are using the same dataset, but eliminating the lowest square footage, the minimum rent has also increased to $650.
+
+#### Interpretation & Implications
+Comparing the values in the table to data collected by [Zumper](https://www.zumper.com/rent-research/boston-ma), it appears as though the summary table is generally accurate for a 2-bedroom in 2021. However, there are many listings outside of the data that went into the initial ssummary table (by enforcing minimums and maximums, we eliminated 769 listings). This means that there are many landlords or brokers that either willfully or accidentally filled out erroneous information on the listing. Some landlords or brokers might price the apartment lower, but in the description put the actual price in order to receive more clicks on the listing. This behavior can erode trust between those renting out the apartments and potential tenants. It also places more burden on potential tenants when it comes to looking for an apartment, which is already a stressful process. For people who are working long hours and are already rent burdened, they may not have the time or energy to sift through all of the listings, which means that they are potentially missing out on apartments.
+
+## Neighborhood Distribution
+
+#### Methods
+
+To see the data on a neighborhood level, I created a table containing the frequencies of each neighborhood by using the `formattable` package and sorted it by the most frequent to least frequent.
+
+```{r}
+location_df <- as.data.frame(table(craigslist_listings_subset$LOCATION))
+location_df_sorted<-location_df[order(location_df$Freq, decreasing = TRUE),]
+colnames(location_df_sorted)<-c("Neighborhood", "Frequency")
+formattable(location_df_sorted, format="html")
+```
+
+A more effective way to view the data is through a bar graph as seen below.
+```{r}
+base<-ggplot(craigslist_listings_subset, aes(x=reorder(LOCATION, LOCATION, length)))
+base + geom_bar() + xlab("Neighborhoods/Cities") + ylab("Count") + coord_flip()
+```
+
+#### Analysis
+
+The listings that are represented in the bar graph are the ones who were filtered according to the list of cities and neighborhoods in the Greater Boston area. Most of the listings were in Brighton (1,757), Cambridge (1,597), and Somerville (1,297). At the opposite end, there were only 13 listings for the West End, 12 for Bay Village, and 1 for Fenway-Kenmore.  
+
+#### Interpretation & Implications
+
+There could be multiple reasons for why some neighborhoods would have more listings than others:
+
+* Some neighborhoods had significantly more turnover during 2020 and 2021. In places such as Cambridge, people may have had enough economic security to pack up and move during the pandemic, leaving more availability.
+
+* The people who use Craigslist to show rental listings may be targeting a specific demographic such as recent college graduates who are more likely to use Craigslist to find apartments near where they went to school or already have social networks. 
+
+* There may be fewer rentals in certain cities/neighborhoods where people are more likely to buy.
+
+* Craigslist is not the only place to find rental properties. This means that for some of the neighborhoods with less listings, they may be on other sites such as Zillow or Facebook Marketplace. Perhaps in some more tight-knit communities, people market listings through word of mouth. This ultimately means that Craigslist on its own may not be the most accurate view of Boston's rental market.
+
+## Listing Dates
+
+#### Methods
+
+Similar to neighborhood distribution, I also created a table to display how many listings there were per month. To do this, I updated the `LISTING_MONTH` variable from a character type to a factor. This enabled me to then order the months chronologically rather than alphabetically.
+
+```{r}
+craigslist_listings_subset<-craigslist_listings_subset %>% mutate(LISTING_MONTH = factor(LISTING_MONTH, levels = c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")))
+per_month_df <- as.data.frame(table(craigslist_listings_subset$LISTING_MONTH))
+per_month_df_sorted<-per_month_df[order(per_month_df$Var1),]
+colnames(per_month_df_sorted)<-c("Month", "Frequency")
+formattable(per_month_df_sorted, format="html")
+```
+
+Another way to view this data is through a bar graph as seen below. This bar graph also shows how many listings were in each year. 
+
+```{r}
+base<-ggplot(craigslist_listings_subset, aes(x=LISTING_MONTH))
+base + geom_bar(aes(fill=as.factor(LISTING_YEAR))) + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + labs(fill = "Listing Year") + xlab("Month") + ylab("Count")
+```
+
+#### Analysis
+
+Comparing 2020 listings to 2021 listings, we can see that March 2020 only had a small number of listings compared to 2021. However, in July and August 2020, as well as October 2020, there were more listings than in 2021. In September, there are a significant amount of listings for both 2020 and 2021 (albeit slightly less for 2021). January 2020 does not have any listings because that was before BARI started scraping data. The small number of listings in Feburary 2020 were also carried over into March 2020 when they started scraping data.
+
+#### Interpretation & Implications
+
+When the COVID-19 pandemic hit in March 2020, there were not a lot of listings because people were likely quarantining and staying put. However, in April, listings picked back up as the listings originally intended for March were now posted. Then, in July and August of 2020, there was an influx of listings most likely due to people leaving the city because of the pandemic. In September, numbers were more "normal" most likely due to the number of students moving back to the City. The 2021 numbers show that less people moved in July, August, and the fall months (outside of September).
+
+## Pets
+
+#### Methods
+Lastly, we can also see how many listings allow pets. I created a table for the `ALLOWS_DOGS` variable and for the `ALLOWS_CATS` variable. I also calculated and appended the percentage by dividing the frequency by the total frequency and multiplying by 100. Similar to neighborhood distribution and listing dates, I used the `formattable` package to create the tables.
+
+```{r}
+allows_dogs_df<-as.data.frame(table(craigslist_listings$ALLOWS_DOGS))
+colnames(allows_dogs_df)<-c("AllowsDogs", "Frequency")
+allows_dogs_df <- allows_dogs_df %>% mutate("Percentage (%)" = Frequency/sum(Frequency)*100)
+
+formattable(allows_dogs_df, format="html")
+
+allows_cats_df<-as.data.frame(table(craigslist_listings$ALLOWS_CATS))
+colnames(allows_cats_df)<-c("AllowsCats", "Frequency")
+allows_cats_df <- allows_cats_df %>% mutate("Percentage (%)" = Frequency/sum(Frequency)*100)
+
+formattable(allows_cats_df, format="html")
+```
+
+To view the data graphically, I used the values above to make a pie chart for cats and dogs.
+
+```{r echo=FALSE}
+allows_dogs_df <- allows_dogs_df %>% mutate("Percentage" = Frequency/sum(Frequency))
+allows_dogs_df <- allows_dogs_df %>% mutate("Labels" = Frequency/sum(Frequency)*100)
+
+# ggplot(allows_dogs_df, aes(x = "", y = Percentage, fill = AllowsDogs)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y", start = 0) + geom_label(aes(label = Labels), position = position_stack(vjust = 0.5)) + labs(title = "Allows Dogs", fill = "Allows Dogs")
+
+ggplot(allows_dogs_df, aes(x = "", y = Percentage, fill = AllowsDogs)) + geom_col(color = "black") + geom_text(aes(label = Labels), position = position_stack(vjust = 0.5)) + coord_polar(theta = "y")
+
+allows_cats_df <- allows_cats_df %>% mutate("Percentage" = Frequency/sum(Frequency))
+allows_cats_df <- allows_cats_df %>% mutate("Labels" = Frequency/sum(Frequency)*100)
+
+ggplot(allows_cats_df, aes(x = "", y = Percentage, fill = AllowsCats)) + geom_col(color = "black") + geom_text(aes(label = Labels), position = position_stack(vjust = 0.5)) + coord_polar(theta = "y")
+```
+
+#### Analysis
+Thirty-five percent of listings allow dogs, which means that 65% of listings do not. For cats, more listings allow cats (56%), than those who do not (44%).
+
+#### Interpretation & Implications
+Since more listings allow cats, this means that it is easier to move with a cat than with a dog. However, brokers and landlords may write in their listing that they do not allow cats or dogs, but tenants may be able to negotiate with the landlords who may allow pets anyway. Also, there are some tenants who move in without a pet and then negotiate with the landlord after moving in. This means that for some listings, the "no cats" or "no dogs" rule may be flexible.
+
