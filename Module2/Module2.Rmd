@@ -1,9 +1,9 @@
 ---
-title: "Module 1- Telling a Data Story"
+title: "Module 2- Pulse of the City"
 author: "Blair Wong"
-date: "2023-01-18"
+date: "2023-01-27"
 output:
-  word_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -11,7 +11,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r load-packages, include=FALSE}
-require(tidyverse)
+library(tidyverse)
+library(forcats)
+library(modelsummary)
+library(formattable)
 ```
 
 ### Background
@@ -22,57 +25,142 @@ The Craigslist Postings data retrieved from [BARI](https://dataverse.harvard.edu
 craigslist_listings<-read.csv('../dataverse_files/CRAIGSLIST.Listings.csv')
 ```
 
-The `craigslist_listings` data set contains 205,450 observations and 14 columns.
-
-```{r craigslist_listings}
-dim(craigslist_listings)
+There are 205450 number of observations.
+```{r}
+count(craigslist_listings)
 ```
 
-The variables for `craigslist_listings` are listed below. Some of the notable variables are `PRICE`, `AREA_SQFT`, `LOCATION`, `LISTING_YEAR`, and `LISTING_MONTH`.
-
-```{r echo=FALSE}
+The variables within the data set are listed below:
+```{r}
 names(craigslist_listings)
+```
+
+To better understand the variables, we can investigate the classes of each variable.
+```{r}
+sapply(craigslist_listings, class)
+```
+
+It is worth nothing that `LISTING_MONTH` is a "character". In order to rank the months correctly later on in the analysis, we will have to convert `LISTING_MONTH` to a factor. Additionally, the `ALLOWS_CATS` and `ALLOWS_DOGS` variables are "integers" rather than logical variables. Still, both of these variables only contain 0's and 1's to indicate whether the listing allows pets or not.
+
+As with the previous analysis in "Tell A Data Story", I will focus on listings that are located in Greater Boston. To do so, I created a list of Boston neighborhoods and filtered the listings that did not have a location in the list. After filtering, there are now 46436 listings.
+
+```{r}
+greater_boston_cities<- list('Allston','Back Bay','Bay Village','Beacon Hill','Brighton','Charlestown','Chinatown','Dorchester','Downtown','East Boston','Fenway-Kenmore','Hyde Park','Jamaica Plain','Mattapan','Mission Hill','North End','Roslindale','Roxbury','South Boston','South End','West End','West Roxbury', 'Wharf District','Cambridge','Somerville','Everett','Chelsea','Revere','Quincy','Watertown','Brookline')
+
+craigslist_listings_subset<-craigslist_listings %>% filter(LOCATION!='',LOCATION %in% greater_boston_cities) %>% select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LOCATION,AREA_SQFT,PRICE)
+
+count(craigslist_listings_subset)
 ```
 
 ### Methods
 
-The subset I will focus on will be observations in the Boston metro area, containing the columns: `LISTING_ID`, `LISTING_YEAR`, `LISTING_MONTH`, `LOCATION`, `AREA_SQFT`, and `PRICE`.
-
-To find the relevant neighborhoods and cities, I created a list of strings containing the neighborhood and city names.
+#### Price & Square Footage
+To better understand the prices & square footage for the listings, we can generate a summary table to describe the basic statistical values of the data. Using the `modelsummary` package, we can see the number of unique values, percentage of missing values, mean, standard deviation, minimum, median, and maximum. The table also provides a histogram to show the distribution of the values as well.
 
 ```{r}
-greater_boston_cities<- list('Allston','Back Bay','Bay Village','Beacon Hill','Brighton','Charlestown','Chinatown','Dorchester','Downtown','East Boston','Fenway-Kenmore','Hyde Park','Jamaica Plain','Mattapan','Mission Hill','North End','Roslindale','Roxbury','South Boston','South End','West End','West Roxbury', 'Wharf District','Cambridge','Somerville','Everett','Chelsea','Revere','Quincy','Watertown','Brookline')
+datasummary_skim(craigslist_listings_subset[c('PRICE','AREA_SQFT')])
 ```
 
-Using this list, I then filtered the locations that contained the neighborhoods and cities in the `greater_boston_cities` list, and removed the listings without square footage. The `craigslist_listings_subset` contains 16,176 records and 6 columns.
+Given that the lowest rental price is $70, and the lowest square footage is 0 square ft, we can conclude that there is some data that is skewing the results and should be excluded. Also, for `AREA_SQFT`, it appears as though 65% of listings are missing square footage information. Therefore, I will also filter out NA values from `AREA_SQFT`.
+
+To determine what would be a reasonable cut off for price, we can filter to see how many listings are above a certain price. Since there is a significant jump from number of listings below $400 & $500, we can treat listings under $400 as outliers and exclude them.
 
 ```{r}
-craigslist_listings_subset<-craigslist_listings %>% filter(LOCATION!='',LOCATION %in% greater_boston_cities,!is.na(AREA_SQFT)) %>% select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LOCATION,AREA_SQFT,PRICE)
+count(filter(craigslist_listings_subset, PRICE < 400))
+count(filter(craigslist_listings_subset, PRICE < 500))
+
+craigslist_listings_subset <- filter(craigslist_listings_subset, PRICE > 400)
 ```
 
-I also added a new column for the price per square foot, `PRICE_PER_SQ_FT`.
+Looking at the square footage more closely, we can see that the minimum is 0.0 square ft, and the maximum is 710940.0 square ft, both of which are not possible values. Similar to price, we can filter out the outliers. A quick glance at the histogram in the table shows that only a few values are significantly high, which means we can eliminate the maximum value. To determine where the cut off is, I compared the number of listings above 2,000, 3,000, and 4,000 square feet. Since there is a major jump between 2,000 square feet and 3,000 square feet, we can use 3,000 as the maximum cut off. For the minimum, I ensured that the listings had above 100 square footage. A new summary table is created below.
 
 ```{r}
-craigslist_listings_subset<-craigslist_listings_subset %>% mutate(PRICE_PER_SQ_FT=PRICE/AREA_SQFT)
+count(filter(craigslist_listings_subset, AREA_SQFT > 4000))
+count(filter(craigslist_listings_subset, AREA_SQFT > 3000))
+count(filter(craigslist_listings_subset, AREA_SQFT > 2000))
+craigslist_listings_subset <- filter(craigslist_listings_subset, AREA_SQFT < 3000)
+craigslist_listings_subset <- filter(craigslist_listings_subset, AREA_SQFT > 100)
+
+datasummary_skim(craigslist_listings_subset[c('PRICE', 'AREA_SQFT')])
 ```
 
-Using the `craigslist_listings_subset`, I then selected the first three rows to analyze.
+#### Neighborhood Distribution
+
+To see the data on a neighborhood level, I created a table containing the frequencies of each neighborhood by using the `formattable` package and sorted it by the most frequent to least frequent.
+
 ```{r}
-head(craigslist_listings_subset,3)
+location_df <- as.data.frame(table(craigslist_listings_subset$LOCATION))
+location_df_sorted<-location_df[order(location_df$Freq, decreasing = TRUE),]
+colnames(location_df_sorted)<-c("Neighborhood", "Frequency")
+formattable(location_df_sorted, format="html")
+```
+
+A more effective way to view the data is through a bar graph as seen below.
+```{r}
+base<-ggplot(craigslist_listings_subset, aes(x=reorder(LOCATION, LOCATION, length)))
+base + geom_bar() + xlab("Neighborhoods/Cities") + ylab("Count") + coord_flip()
+```
+
+#### Listing Dates
+
+Similar to neighborhood distribution, I also created a table to display how many listings there were per month. To do this, I updated the `LISTING_MONTH` variable from a character type to a factor. This enabled me to then order the months chronologically rather than alphabetically.
+
+```{r}
+craigslist_listings_subset<-craigslist_listings_subset %>% mutate(LISTING_MONTH = factor(LISTING_MONTH, levels = c("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December")))
+per_month_df <- as.data.frame(table(craigslist_listings_subset$LISTING_MONTH))
+per_month_df_sorted<-per_month_df[order(per_month_df$Var1),]
+colnames(per_month_df_sorted)<-c("Month", "Frequency")
+formattable(per_month_df_sorted, format="html")
+```
+
+Another way to view this data is through a bar graph as seen below. This bar graph also shows how many listings were in each year. 
+
+```{r}
+base<-ggplot(craigslist_listings_subset, aes(x=LISTING_MONTH))
+base + geom_bar(aes(fill=as.factor(LISTING_YEAR))) + theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + labs(fill = "Listing Year") + xlab("Month") + ylab("Count")
+```
+
+#### Pets
+Lastly, we can also see how many listings allow pets. I created a table for the `ALLOWS_DOGS` variable and for the `ALLOWS_CATS` variable. I also calculated and appended the percentage by dividing the frequency by the total frequency and multiplying by 100. Similar to neighborhood distribution and listing dates, I used the `formattable` package to create the tables.
+
+```{r}
+allows_dogs_df<-as.data.frame(table(craigslist_listings$ALLOWS_DOGS))
+colnames(allows_dogs_df)<-c("AllowsDogs", "Frequency")
+allows_dogs_df <- allows_dogs_df %>% mutate("Percentage (%)" = Frequency/sum(Frequency)*100)
+
+formattable(allows_dogs_df, format="html")
+
+allows_cats_df<-as.data.frame(table(craigslist_listings$ALLOWS_CATS))
+colnames(allows_cats_df)<-c("AllowsCats", "Frequency")
+allows_cats_df <- allows_cats_df %>% mutate("Percentage (%)" = Frequency/sum(Frequency)*100)
+
+formattable(allows_cats_df, format="html")
+```
+
+To view the data graphically, I used the values above to make a pie chart for cats and dogs.
+
+```{r echo=FALSE}
+allows_dogs_df <- allows_dogs_df %>% mutate("Percentage" = Frequency/sum(Frequency))
+allows_dogs_df <- allows_dogs_df %>% mutate("Labels" = Frequency/sum(Frequency)*100)
+
+# ggplot(allows_dogs_df, aes(x = "", y = Percentage, fill = AllowsDogs)) + geom_bar(width = 1, stat = "identity") + coord_polar(theta = "y", start = 0) + geom_label(aes(label = Labels), position = position_stack(vjust = 0.5)) + labs(title = "Allows Dogs", fill = "Allows Dogs")
+
+ggplot(allows_dogs_df, aes(x = "", y = Percentage, fill = AllowsDogs)) + geom_col(color = "black") + geom_text(aes(label = Labels), position = position_stack(vjust = 0.5)) + coord_polar(theta = "y")
+
+allows_cats_df <- allows_cats_df %>% mutate("Percentage" = Frequency/sum(Frequency))
+allows_cats_df <- allows_cats_df %>% mutate("Labels" = Frequency/sum(Frequency)*100)
+
+ggplot(allows_cats_df, aes(x = "", y = Percentage, fill = AllowsCats)) + geom_col(color = "black") + geom_text(aes(label = Labels), position = position_stack(vjust = 0.5)) + coord_polar(theta = "y")
 ```
 
 ### Analysis
 
-The top three rows were all listed in May 2020, but in different neighborhoods (Roslindale, Quincy, and Allston). The Roslindale and Allston listings have similar square footage (1,263 sq ft and 1,103 sq ft respectively), while the Quincy listing is only 750 sq ft. Although the Roslindale and Allston listings have similar square footage, they differ in price, with Roslindale being listed at $2,300 per month and Allston at $3,500 per month. The Quincy listing was listed at $1,700 per month.
+#### Price & Square Footage
 
-Since Allston and Roslindale have similar square footage but significantly different listing prices, this indicates that the Allston neighborhood may have higher demand from renters. Because Quincy has a smaller square footage, it is difficult to compare with the other two locations. However, to compare more effectively, we can use the calculated price per square footage in the `PRICE_PER_SQ_FT` variable.
-
-The `PRICE_PER_SQ_FT` variable indicates that Allston has the highest price per square foot, while Roslindale has the lowest price per square foot. This further highlights the difference in demand between Roslindale and Allston, and it places Quincy in the middle. 
 
 ### Interpretation
 
-Although the dates are the same for all three of the selected listings, the general data set can provide helpful information on how listing prices have changed from before the COVID-19 pandemic and throughout it. Also, the frequency of each neighborhood or city listed under `LOCATION` can provide helpful information on which areas have more people moving in and out. The neighborhoods with high turnover at certain months (such as September) might show that certain neighborhoods have a higher percentage of students. The data related to turnover might also provide information on which neighborhoods saw the most people leave during the pandemic, which ultimately indicates a certain level of economic security (having the means to move without significant saving and planning) or those who were being evicted when moratoriums were not in place.
+
 
 ### Implications
 
-Ultimately, this data set is helpful for providing in depth information on renters in Boston. It can potentially show economic security, where the transient renters tend to live, and where the highest demand locations are. This information can then be used to provide more tailored support to renters throughout the different neighborhoods and cities.
