@@ -19,32 +19,23 @@ library(formattable)
 
 ## Background
 
-The Craigslist Postings data retrieved from [BARI](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/52WSPT) is comprised of two parts: listing-level data (`CRAIGSLIST.Listings.csv`), and listing data that has been aggregated across census tracts (`CRAIGSLIST.CT.csv`). This analysis will focus on `craigslist_listings`. 
+Continuing the analysis with Craigslist data provided by [BARI](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/52WSPT), we will dive further into the price and square footage data. In addition, we will explore the distribution of listings across neighborhoods on Craigslist as well as the listing dates. Finally, we will look at the data regarding pets and investigate how many listings allow cats and dogs. 
+
+For pricing and square footage data, I wanted to gain a fuller understanding of the overall rental prices in Boston, as well as the sizes of listings. The price and square footage data also might provide insightful information on the dynamics between renters and landlords/brokers in the city.
+
+In terms of neighborhood distribution, I wanted to better understand the turnover across various neighborhoods, as well as which neighborhoods might skew towards using Craigslist versus other sites such as Zillow or Apartments.com.
+
+Supplementing the neighborhood distribution, I also wanted to investigate the turnover in terms of listing dates and how often people were moving in and out during 2020 and 2021. This could help paint a picture of the effects of the COVID-19 pandemic on Boston's rental scene.
+
+Lastly, with regards to pets, I wanted a better understanding of how many listings allow dogs and cats since these requirements can make it more difficult for pet owners to move.
+
+Taken together, these pieces of data can help us paint a fuller picture of the rental scene in Boston.
+
+As with the previous analysis in ["Tell A Data Story"](https://sppua5262.wordpress.com/2023/01/23/tell-a-data-story-craigslist-2/), I will focus on listings that are located in Greater Boston.
 
 ```{r}
 craigslist_listings<-read.csv('../dataverse_files/CRAIGSLIST.Listings.csv')
-```
 
-There are 205450 number of observations.
-```{r}
-count(craigslist_listings)
-```
-
-The variables within the data set are listed below:
-```{r}
-names(craigslist_listings)
-```
-
-To better understand the variables, we can investigate the classes of each variable.
-```{r}
-sapply(craigslist_listings, class)
-```
-
-It is worth nothing that `LISTING_MONTH` is a "character". In order to rank the months correctly later on in the analysis, we will have to convert `LISTING_MONTH` to a factor. Additionally, the `ALLOWS_CATS` and `ALLOWS_DOGS` variables are "integers" rather than logical variables. Still, both of these variables only contain 0's and 1's to indicate whether the listing allows pets or not.
-
-As with the previous analysis in "Tell A Data Story", I will focus on listings that are located in Greater Boston. To do so, I created a list of Boston neighborhoods and filtered the listings that did not have a location in the list. After filtering, there are now 46436 listings.
-
-```{r}
 greater_boston_cities<- list('Allston','Back Bay','Bay Village','Beacon Hill','Brighton','Charlestown','Chinatown','Dorchester','Downtown','East Boston','Fenway-Kenmore','Hyde Park','Jamaica Plain','Mattapan','Mission Hill','North End','Roslindale','Roxbury','South Boston','South End','West End','West Roxbury', 'Wharf District','Cambridge','Somerville','Everett','Chelsea','Revere','Quincy','Watertown','Brookline')
 
 craigslist_listings_subset<-craigslist_listings %>% filter(LOCATION!='',LOCATION %in% greater_boston_cities) %>% select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LOCATION,AREA_SQFT,PRICE)
@@ -90,7 +81,7 @@ Looking at the initial summary table for price and square footage, there are som
 Comparing the two summary tables, it appears as though the mean and median prices for rent went up slightly (from $2391.70 to $2487.40 and $2250 to $2375 respectively). This makes sense given that we removed the values lower than $400. For square footage, only the mean changed from 1,179.2 square feet to 935.1 square feet, and the median remained at 900 square feet. This is reasonable since we removed the highest values which were significantly skewing the mean. Also, since we are using the same dataset, but eliminating the lowest square footage, the minimum rent has also increased to $650.
 
 #### Interpretation & Implications
-Comparing the values in the table to data collected by [Zumper](https://www.zumper.com/rent-research/boston-ma), it appears as though the summary table is generally accurate for a 2-bedroom in 2021. However, there are many listings outside of the data that went into the initial ssummary table (by enforcing minimums and maximums, we eliminated 769 listings). This means that there are many landlords or brokers that either willfully or accidentally filled out erroneous information on the listing. Some landlords or brokers might price the apartment lower, but in the description put the actual price in order to receive more clicks on the listing. This behavior can erode trust between those renting out the apartments and potential tenants. It also places more burden on potential tenants when it comes to looking for an apartment, which is already a stressful process. For people who are working long hours and are already rent burdened, they may not have the time or energy to sift through all of the listings, which means that they are potentially missing out on apartments.
+Comparing the values in the table to data collected by [Zumper](https://www.zumper.com/rent-research/boston-ma), it appears as though the summary table is generally accurate for a 2-bedroom in 2021. However, there are many listings outside of the data that went into the initial summary table (by enforcing minimums and maximums, we eliminated 769 listings). This means that there are many landlords or brokers that either willfully or accidentally filled out erroneous information on the listing. Some landlords or brokers might price the apartment lower, but in the description put the actual price in order to receive more clicks on the listing. This behavior can erode trust between those renting out the apartments and potential tenants. It also places more burden on potential tenants when it comes to looking for an apartment, which is already a stressful process. For people who are working long hours and are already rent burdened, they may not have the time or energy to sift through all of the listings, which means that they are potentially missing out on apartments.
 
 ## Neighborhood Distribution
 
