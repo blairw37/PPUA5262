@@ -3,6 +3,4 @@
 dataverse_files/
 .RData
 .Rhistory
-*.docx
 *.pdf
-*.html
