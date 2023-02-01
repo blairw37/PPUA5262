@@ -1,0 +1,65 @@
+---
+title: "Module 3- Revealing Knowledge"
+author: "Blair Wong"
+date: "2023-02-03"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-packages, include=FALSE}
+library(tidyverse)
+library(forcats)
+library(modelsummary)
+library(formattable)
+```
+
+```{r}
+craigslist_listings<-read.csv('../dataverse_files/CRAIGSLIST.Listings.csv')
+
+# Import Census Tract CSV files
+census_tract_boston<-read.csv('../census-tract-data-boston.csv')
+census_tract_other<-read.csv('../census-tract-other-cities.csv')
+
+# Convert Census Tract ID to characters
+craigslist_listings$CT_ID_10<-as.character(craigslist_listings$CT_ID_10)
+census_tract_other$CENSUS_TRACT_ID<-as.character(census_tract_other$CENSUS_TRACT_ID)
+census_tract_boston$GEOCODE<-as.character(census_tract_boston$GEOCODE)
+
+# Create substring column in craigslist_listings and census_tract_boston
+craigslist_listings$CT_ID_10_SUB<-substring(craigslist_listings$CT_ID_10,6,11)
+census_tract_boston$GEOCODE_SUB<-substring(census_tract_boston$GEOCODE,6,11)
+
+# Create & append lists
+census_tract_list_bos<-as.list(census_tract_boston$GEOCODE_SUB)
+census_tract_list_other<-as.list(census_tract_other$CENSUS_TRACT_ID)
+census_tract_list<-append(census_tract_list_bos, census_tract_list_other)
+
+# Filter by CT ID's
+craigslist_listings_subset<-craigslist_listings %>% filter(CT_ID_10_SUB %in% census_tract_list) %>% select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LISTING_DAY,LOCATION,AREA_SQFT,PRICE,CT_ID_10_SUB)
+
+# Append column for if in Boston
+craigslist_listings_subset$IN_BOSTON<-ifelse(craigslist_listings_subset$CT_ID_10_SUB %in% census_tract_list_bos, 1, 0)
+
+# PRICE_PER_SQ_FT
+craigslist_listings_subset<-craigslist_listings_subset %>% drop_na(AREA_SQFT)
+craigslist_listings_subset<-craigslist_listings_subset %>% mutate(PRICE_PER_SQ_FT=PRICE/AREA_SQFT)
+
+# LISTING_DATE
+craigslist_listings_subset$LISTING_MONTH_NUM<-match(craigslist_listings_subset$LISTING_MONTH, month.name)
+craigslist_listings_subset<-unite(craigslist_listings_subset, col="LISTING_DATE", c('LISTING_YEAR','LISTING_MONTH_NUM','LISTING_DAY'), sep='-')
+craigslist_listings_subset$LISTING_DATE<-as.Date(craigslist_listings_subset$LISTING_DATE)
+```
+
+Three New Variables:
+1) `IN_BOSTON`
+2) `PRICE_PER_SQ_FT`
+3) `LISTING_DATE`
+
+
+
+## Background
+
