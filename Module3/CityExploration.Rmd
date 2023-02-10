@@ -65,7 +65,7 @@ craigslist_listings_subset<-craigslist_listings %>% filter(CT_ID_10_SUB %in% cen
 # Filter out outliers
 craigslist_listings_subset <- filter(craigslist_listings_subset, PRICE > 400)
 craigslist_listings_subset <- filter(craigslist_listings_subset, AREA_SQFT < 3000)
-craigslist_listings_subset <- filter(craigslist_listings_subset, AREA_SQFT > 100)
+craigslist_listings_subset <- filter(craigslist_listings_subset, AREA_SQFT > 500)
 ```
 
 #### IN_BOSTON
@@ -113,13 +113,13 @@ Then, I chose two census tracts: 354100 in Cambridge and 120600 in Jamaica Plain
 avg_price_per_sq_ft_df_filtered1<-avg_price_per_sq_ft_df %>% filter(CT_ID_10_SUB=="354100") %>% select(CT_ID_10_SUB,LISTING_DATE,AVG_PRICE_PER_SQ_FT)
 
 # Filtering by census tract in Jamaica Plain
-avg_price_per_sq_ft_df_filtered2<-avg_price_per_sq_ft_df %>% filter(CT_ID_10_SUB=="120600") %>% select(CT_ID_10_SUB,LISTING_DATE,AVG_PRICE_PER_SQ_FT)
+avg_price_per_sq_ft_df_filtered2<-avg_price_per_sq_ft_df %>% filter(CT_ID_10_SUB=="120400") %>% select(CT_ID_10_SUB,LISTING_DATE,AVG_PRICE_PER_SQ_FT)
 ```
 
 Finally, I created a time series plot with lines representing 354100 - Cambridge in dark blue and 120600 - Jamaica Plain in red.
 ```{r}
 # Creating a time series plot to compare CT in Cambridge and CT in JP
-time_series_plot<-ggplot() + geom_line(data=avg_price_per_sq_ft_df_filtered1, aes(x=LISTING_DATE, y=AVG_PRICE_PER_SQ_FT, color="354100 - Cambridge")) + geom_line(data=avg_price_per_sq_ft_df_filtered2, aes(x=LISTING_DATE, y=AVG_PRICE_PER_SQ_FT, color="120600 - Jamaica Plain")) + labs(title="Average Price Per Square Ft Over Time in Two Census Tracts") + xlab("Listing Date") + ylab("Average Price per Square Ft") + scale_color_manual(values = c("354100 - Cambridge" = "darkblue", "120600 - Jamaica Plain" = "red")) + labs(color = "Census Tracts")
+time_series_plot<-ggplot() + geom_line(data=avg_price_per_sq_ft_df_filtered1, aes(x=LISTING_DATE, y=AVG_PRICE_PER_SQ_FT, color="354100 - Cambridge")) + geom_line(data=avg_price_per_sq_ft_df_filtered2, aes(x=LISTING_DATE, y=AVG_PRICE_PER_SQ_FT, color="120400 - Jamaica Plain")) + labs(title="Average Price Per Square Ft Over Time in Two Census Tracts") + xlab("Listing Date") + ylab("Average Price per Square Ft") + scale_color_manual(values = c("354100 - Cambridge" = "darkblue", "120400 - Jamaica Plain" = "red")) + labs(color = "Census Tracts")
 time_series_plot
 ```
 
@@ -148,6 +148,9 @@ time_series_plot_bos<-ggplot() + geom_line(data=avg_price_per_sq_ft_df_bos, aes(
 
 time_series_plot_bos
 ```
+
+#### Census Tract with the Most Listings
+table(craigslist_listings_subset$CT_ID_10_SUB)
 
 ## Analysis
 
