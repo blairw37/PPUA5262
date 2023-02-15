@@ -1,0 +1,100 @@
+---
+title: "README - Craigslist Data"
+author: "Blair Wong"
+output: html_document
+date: "2023-02-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(forcats)
+library(modelsummary)
+library(formattable)
+library(lubridate)
+```
+
+### Overview
+
+The Craigslist data scraped by [BARI](https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/52WSPT) contains listings from the state of Massachusetts across five different regions (Boston, Cape Cod, South Coast, Western Mass, and Worcester) from February 2020 until December 2021. There are a total of 205,450 rows, and 14 variables including listing ID, listing date, price, square footage, location, and census tract. This data could be useful for analyzing the state of the Massachusetts rental market, especially in the aftermath of the COVID-19 pandemic.
+
+### Fun Facts
+
+Considering the listings within the city of Boston and its surrounding cities:
+
+- The census tract with the most listings is 354100 in Cambridge (around Harvard Square), with a total of 2,808 listings.
+- The census tract with the highest average price per square foot value of $4.69/sqft is 010104, which is in Kenmore/Back Bay.
+- There are 12,394 listings in Boston, and 15,964 listings in the surrounding cities.
+- July 2020 had the highest number of listings (1,221 listings), and October 2021 saw the least amount of listings (65 listings).
+- 9,932 listings allowed dogs, while 14,842 listings allowed cats. 13,081 listings did not allow pets at all.
+- The average rent in the city of Boston was $2,660.70 per month. The average rent in the surrounding cities was $2,484.92 per month.
+- The average square footage of a Craigslist listing was 1,013.825 square feet, which is about the size of a two-bedroom apartment.
+
+### Visualization
+
+This graph shows the number of listings over time. As previously mentioned, the highest number of listings were in July 2020, and the lowest was in October 2021. One of the possible reasons for why the listings were higher in the summer of 2020 is because of the higher number of people leaving the city due to the COVID-19 pandemic. Interestingly, summer and fall 2021 did not see the same number of listings. This potentially indicates that there is less of an exodus from the city. September 2021 saw higher numbers as expected due to the return of college students.
+```{r echo = FALSE}
+
+craigslist_listings<-read.csv('../dataverse_files/CRAIGSLIST.Listings.csv')
+census_tract_boston<-read.csv('../census-tract-data-boston.csv')
+census_tract_other<-read.csv('../census-tract-other-cities.csv')
+
+# Convert Census Tract ID to characters
+craigslist_listings$CT_ID_10<-as.character(craigslist_listings$CT_ID_10)
+census_tract_other$CENSUS_TRACT_ID<-as.character(census_tract_other$CENSUS_TRACT_ID)
+census_tract_boston$GEOCODE<-as.character(census_tract_boston$GEOCODE)
+
+# Create substring column in craigslist_listings and census_tract_boston
+craigslist_listings$CT_ID_10_SUB<-substring(craigslist_listings$CT_ID_10,6,11)
+census_tract_boston$GEOCODE_SUB<-substring(census_tract_boston$GEOCODE,6,11)
+
+# Create & append lists
+census_tract_list_bos<-as.list(census_tract_boston$GEOCODE_SUB)
+census_tract_list_other<-as.list(census_tract_other$CENSUS_TRACT_ID)
+census_tract_list<-append(census_tract_list_bos, census_tract_list_other)
+
+# Filter by census tract ID's
+craigslist_listings_subset<-craigslist_listings %>% filter(CT_ID_10_SUB %in% census_tract_list) %>% select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LISTING_DAY,LOCATION,AREA_SQFT,PRICE,CT_ID_10_SUB,BODY,ALLOWS_CATS,ALLOWS_DOGS)
+
+craigslist_listings_subset<-craigslist_listings_subset %>% filter(CT_ID_10_SUB != '010206')
+
+# Filter out outliers
+craigslist_listings_subset <- filter(craigslist_listings_subset, PRICE > 400)
+craigslist_listings_subset <- filter(craigslist_listings_subset, AREA_SQFT < 3000)
+craigslist_listings_subset <- filter(craigslist_listings_subset, AREA_SQFT > 500)
+
+# Append column for if in Boston
+craigslist_listings_subset$IN_BOSTON<-ifelse(craigslist_listings_subset$CT_ID_10_SUB %in% census_tract_list_bos, 1, 0)
+
+# Calclulate PRICE_PER_SQ_FT
+craigslist_listings_subset<-craigslist_listings_subset %>% drop_na(AREA_SQFT)
+craigslist_listings_subset<-craigslist_listings_subset %>% mutate(PRICE_PER_SQ_FT=PRICE/AREA_SQFT)
+
+# Create LISTING_DATE
+craigslist_listings_subset$LISTING_MONTH_NUM<-match(craigslist_listings_subset$LISTING_MONTH, month.name)
+craigslist_listings_subset<-unite(craigslist_listings_subset, col="LISTING_YR_MONTH", c('LISTING_YEAR', 'LISTING_MONTH_NUM'), sep='-')
+craigslist_listings_subset$LISTING_DATE<-as.Date(paste(craigslist_listings_subset$LISTING_YR_MONTH,"-01",sep=""))
+
+date_freq <- as.data.frame(table(craigslist_listings_subset$LISTING_DATE))
+names(date_freq)[1] = "LISTING_DATE"
+names(date_freq)[2] = "FREQ"
+date_freq_plot <- ggplot(data = date_freq, aes(x=LISTING_DATE, y=FREQ)) + geom_col() + theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) + labs(title="Number of Listings Over Time", x="Listing Date", y="Number of Listings")
+
+date_freq_plot
+```
+
+The first box plot visualization shows the top five census tracts with the highest average price per square foot. Each red dot represents a specific listing. The second box plot visualization shows the same, except with the bottom five census tracts (the lowest average price per square foot), and each blue dot represents a listing. It is interesting to note that the census tracts with higher price per square foot values have significantly more listing than the census tracts with the lowest values. This ultimately provides an interesting insight into the landlords/brokers and potential tenants who use Craigslist as a means of finding a rental as it shows that Craigslist is perhaps more frequently used in more expensive areas.
+
+```{r echo=FALSE}
+# Box plot
+craigslist_listings_subset_box<-filter(craigslist_listings_subset, CT_ID_10_SUB == "010104" | CT_ID_10_SUB =="353102" | CT_ID_10_SUB == "070402" | CT_ID_10_SUB == "010600" | CT_ID_10_SUB == "010701")
+box_dot_plot_top<-ggplot(craigslist_listings_subset_box, aes(CT_ID_10_SUB, PRICE_PER_SQ_FT)) + geom_boxplot() + geom_dotplot(binaxis = 'y', stackdir = 'center', dotsize = .5, fill='red', binwidth = 0.15) + theme(axis.text.x = element_text(angle=45, vjust=0.5)) + labs(title= "Top 5 Average Price per Square Ft Census Tracts", x="Census Tracts", y="Price per Square Ft")
+box_dot_plot_top
+```
+
+```{r echo=FALSE}
+# Box plot
+craigslist_listings_subset_box<-filter(craigslist_listings_subset, CT_ID_10_SUB == "981100" | CT_ID_10_SUB =="100300" | CT_ID_10_SUB == "418003" | CT_ID_10_SUB == "090200" | CT_ID_10_SUB == "092400")
+box_dot_plot_bottom<-ggplot(craigslist_listings_subset_box, aes(CT_ID_10_SUB, PRICE_PER_SQ_FT)) + geom_boxplot() + geom_dotplot(binaxis = 'y', stackdir = 'center', dotsize = .5, fill='blue', binwidth = 0.15) + theme(axis.text.x = element_text(angle=45, vjust=0.5)) + labs(title= "Bottom 5 Average Price per Square Ft Census Tracts", x="Census Tracts", y="Price per Square Ft")
+box_dot_plot_bottom
+```

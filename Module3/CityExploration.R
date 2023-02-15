@@ -77,7 +77,7 @@ time_series_plot_bos<-ggplot() + geom_line(data=avg_price_per_sq_ft_df_bos, aes(
 time_series_plot_bos
 
 # Creating a time series plot to compare JP with census tracts outside of Boston
-time_series_plot_jp<-ggplot() + geom_line(data=avg_price_per_sq_ft_df_filtered2, aes(x=LISTING_DATE, y=AVG_PRICE_PER_SQ_FT, color="120400 - Jamaica Plain")) + geom_line(data=avg_price_per_sq_ft_df_other, aes(x=LISTING_DATE, y=AVG_PRICE_PER_SQ_FT, color="Outside of Boston")) + labs(title="Average Price Per Square Ft Over Time in 120400 - Jamaica Plain vs. Outside Boston") + xlab("Listing Date") + ylab("Average Price per Square Ft") + scale_color_manual(values = c("120400 - Jamaica Plain" = "darkblue", "Outside of Boston" = "red")) + labs(color = "Census Tracts")
+time_series_plot_jp<-ggplot() + geom_line(data=avg_price_per_sq_ft_df_filtered2, aes(x=LISTING_DATE, y=AVG_PRICE_PER_SQ_FT, color="010104 - Back Bay")) + geom_line(data=avg_price_per_sq_ft_df_other, aes(x=LISTING_DATE, y=AVG_PRICE_PER_SQ_FT, color="Outside of Boston")) + labs(title="Average Price Per Square Ft Over Time in 010104 - Back Bay vs. Outside Boston") + xlab("Listing Date") + ylab("Average Price per Square Ft") + scale_color_manual(values = c("010104 - Back Bay" = "darkblue", "Outside of Boston" = "red")) + labs(color = "Census Tracts")
 time_series_plot_jp
 
 # Density Plot
@@ -86,3 +86,4 @@ density_df<- as.data.frame(table(craigslist_listings_bos$CT_ID_10_SUB))
 names(density_df)[names(density_df) == 'Var1'] <- 'CT_ID_10_SUB'
 density_df<-density_df %>% arrange(desc(Freq))
 View(head(density_df,10))
+
