@@ -1,0 +1,209 @@
+---
+title: "Module 6 - Building Latent Constructs"
+author: "Blair Wong"
+output: html_document
+date: "2023-02-22"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load-packages, include=FALSE}
+library(tidyverse)
+```
+
+## Background
+
+Based on the two proposed latent structures (whether the listing is a scam and the overall quality of the listing), this post will focus on the quality of the listings. The quality of a listing can either help or impede renters in their search for housing. For low-income renters, low-quality listings can make an already-stressful housing search even more difficult.
+
+To capture the quality of listings, some of the manifest variables we will leverage are:
+
+- **Price**: Minimum, maximum, and average price are helpful in understanding whether the price generally aligns with the market today. Low effort listings will likely have significantly low prices that do not make sense for the Greater Boston area.
+- **Square footage**: Similar to price, minimum, maximum, and average square footage can help us determine the quality of listings since some listings will have values that do not make sense.
+- **Number of words in the body description**: This could be a helpful measure of low effort posts with too little words (< 15) or posts that have too many words that people do not have time to read through (> 1500).
+- **Whether there is any missing metadata**: This would be useful in showing how many listings are missing information such as square footage and/or location. Low effort listings may not contain enough information for the potential renter.
+- **Mentions of section 8 and vouchers**: With the high number of people in the Greater Boston area searching for housing with vouchers, it is important to determine how many listings mention section 8 and vouchers. Unfortunately, most listings do not mention section 8 or vouchers at all. However, out of the ones that do, a majority of them say that section 8 vouchers are welcome. Still, it would be helpful to determine how many listings discriminate against searchers with vouchers.
+
+## Methods
+
+### Set Up
+
+Similar to previous posts, I will filter the scraped Craigslist data from BARI to census tracts in Boston and the surrounding cities. Unlike before, however, I will leave NA values and will not filter out outliers for price and square footage so that we can get a better understanding of listing quality. After the initial set up, I will begin aggregating by census tract IDs.
+
+```{r}
+# Importing Data
+craigslist_listings<-read.csv('CRAIGSLIST.Listings.csv')
+census_tract_boston<-read.csv('../census-tract-data-boston.csv')
+census_tract_other<-read.csv('../census-tract-other-cities.csv')
+
+# Convert Census Tract ID to characters
+craigslist_listings$CT_ID_10<-as.character(craigslist_listings$CT_ID_10)
+census_tract_other$CENSUS_TRACT_ID<-as.character(census_tract_other$CENSUS_TRACT_ID)
+census_tract_boston$GEOCODE<-as.character(census_tract_boston$GEOCODE)
+
+# Create substring column in craigslist_listings and census_tract_boston
+craigslist_listings$CT_ID_10_SUB<-substring(craigslist_listings$CT_ID_10,6,11)
+census_tract_boston$GEOCODE_SUB<-substring(census_tract_boston$GEOCODE,6,11)
+
+# Create & append lists
+census_tract_list_bos<-as.list(census_tract_boston$GEOCODE_SUB)
+census_tract_list_other<-as.list(census_tract_other$CENSUS_TRACT_ID)
+census_tract_list<-append(census_tract_list_bos, census_tract_list_other)
+
+# Filter by census tract ID's
+craigslist_listings_subset<-craigslist_listings %>% filter(CT_ID_10_SUB %in% census_tract_list) %>% select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LISTING_DAY,BODY,LOCATION,AREA_SQFT,PRICE,CT_ID_10_SUB)
+
+# Create LISTING_DATE
+craigslist_listings_subset$LISTING_MONTH_NUM<-match(craigslist_listings_subset$LISTING_MONTH, month.name)
+craigslist_listings_subset<-unite(craigslist_listings_subset, col="LISTING_YR_MONTH", c('LISTING_YEAR', 'LISTING_MONTH_NUM'), sep='-')
+craigslist_listings_subset$LISTING_DATE<-as.Date(paste(craigslist_listings_subset$LISTING_YR_MONTH,"-01",sep=""))
+```
+
+### Aggregating
+
+#### Count
+
+To get the number of listings for each census tract, I used the `table()` function.
+
+```{r}
+ct_listings<-data.frame(table(craigslist_listings_subset$CT_ID_10_SUB))
+colnames(ct_listings)<-c("CT_ID_10_SUB", "COUNT")
+```
+
+#### Price
+
+While aggregating by price, I calculated the average, minimum, and maximum. I also counted the price outliers (any price that is less than $300).
+
+```{r}
+# Price
+ct_price<-craigslist_listings_subset %>%
+  group_by(CT_ID_10_SUB) %>%
+  summarise(AVG_PRICE=mean(PRICE),
+            MIN_PRICE=min(PRICE),
+            MAX_PRICE=max(PRICE),
+            PRICE_OUTLIERS=(sum(PRICE < 300)))
+```
+
+#### Square Footage
+
+Similar to price, I calculated the average, minimum, and maximum after filtering out the NA values. I also determined the number of outliers (`AREA_SQFT > 3000` & `AREA_SQFT < 150`).
+
+```{r}
+# Square Footage
+ct_sqft<-filter(craigslist_listings_subset, !is.na(AREA_SQFT))
+ct_sqft<-ct_sqft %>%
+  group_by(CT_ID_10_SUB) %>%
+  summarise(AVG_SQFT=mean(AREA_SQFT, na.rm = TRUE),
+            MIN_SQFT=min(AREA_SQFT, na.rm = TRUE),
+            MAX_SQFT=max(AREA_SQFT, na.rm = TRUE),
+            SQFT_outliers=(sum((AREA_SQFT > 3000) | (AREA_SQFT < 150))))
+```
+
+#### Section 8
+
+For Section 8, I first calculated the number of section 8 mentions and then calculated the number of listings that explicitly said "No section 8". Afterwards, I then calculated the number of listings that approved section 8 vouchers by subtracting the number of "No section 8" listings from the total that mentioned section 8.
+
+```{r}
+# Section 8
+craigslist_listings_subset$SECTION_8 <- as.integer(grepl('section 8', craigslist_listings_subset$BODY, fixed = FALSE, ignore.case = TRUE) | grepl('voucher', craigslist_listings_subset$BODY, fixed = FALSE, ignore.case = TRUE))
+craigslist_listings_subset$NO_SECTION_8 <- as.integer(grepl('No section 8', craigslist_listings_subset$BODY, fixed = TRUE) | grepl('no section 8', craigslist_listings_subset$BODY, fixed = TRUE))
+
+ct_sec8<-craigslist_listings_subset %>%
+  group_by(CT_ID_10_SUB) %>%
+  summarise(NO_SECTION_8=sum(NO_SECTION_8),
+            SECTION_8_MENTIONS=sum(SECTION_8))
+
+ct_sec8$YES_SECTION_8<-(ct_sec8$SECTION_8_MENTIONS - ct_sec8$NO_SECTION_8)
+```
+
+#### Missing Meta Data
+
+With regards to missing data, I first determined if a listing was missing either square footage info or location. If the listing was missing either, then it was assigned a value of 1 and if it was not, then it was assigned a value of 0. I then calculated how many listings were missing data for each census tract.
+
+```{r}
+# Missing meta data
+craigslist_listings_subset$MISSING_DATA <- ifelse(is.na(craigslist_listings_subset$AREA_SQFT) | (craigslist_listings_subset$LOCATION == ''), 1, 0)
+
+ct_missing_data<-craigslist_listings_subset %>%
+  group_by(CT_ID_10_SUB) %>%
+  summarise(MISSING_DATA=sum(MISSING_DATA))
+```
+
+#### Body Length
+
+To calculate the body length, I counted the number of words using the `str_count` function. I then counted the number of listings with a body word count of less than 15 and greater than 1500. I also calculated the average body word count.
+
+```{r}
+# Body length
+craigslist_listings_subset$BODY_STRING_COUNT <- str_count(craigslist_listings_subset$BODY, '\\w+')
+craigslist_listings_subset$BODY_STR_COUNT_LESS <- ifelse(craigslist_listings_subset$BODY_STRING_COUNT < 15, 1, 0)
+craigslist_listings_subset$BODY_STR_COUNT_OVER <- ifelse(craigslist_listings_subset$BODY_STRING_COUNT > 1500, 1, 0)
+ct_body_str_count<-craigslist_listings_subset %>%
+  group_by(CT_ID_10_SUB) %>%
+  summarise(BODY_STR_COUNT_LESS=sum(BODY_STR_COUNT_LESS),
+           BODY_STR_COUNT_OVER=sum(BODY_STR_COUNT_OVER),
+           AVG_BODY_STR=mean(BODY_STRING_COUNT))
+```
+
+#### Final Dataframe
+
+Finally, I merged all of the aggregated values together into one dataframe called `ct_stats`.
+
+```{r}
+ct_stats<-merge(ct_listings, ct_price, by = 'CT_ID_10_SUB')
+ct_stats<-merge(ct_stats, ct_sqft, by ='CT_ID_10_SUB')
+ct_stats<-merge(ct_stats, ct_sec8, by ='CT_ID_10_SUB')
+ct_stats<-merge(ct_stats, ct_missing_data, by = 'CT_ID_10_SUB')
+ct_stats<-merge(ct_stats, ct_body_str_count, by = 'CT_ID_10_SUB')
+```
+
+## Analysis
+
+From an initial glance at the data in `ct_stats`, it is clear that there are landlords/brokers who are abusing the Craigslist listings system in an effort to attract more people to their listings and/or landlords/brokers who do not do their due diligence in creating listings. For example, the lowest listing price is $10 for census tract 020101, which is in Back Bay. Ten dollars does not make sense for the Boston area in general, let alone Back Bay. The maximum square footage is 999999 sqft listed in census tracts 010701 (Back Bay) and 030100 (North End). The census tract with the most listings that are missing location and square footage data is 354100, which is in Harvard Square. 
+
+#### Minimum Price & Missing Metadata
+
+```{r echo=FALSE}
+missing_data_min_price<-ggplot(ct_stats, aes(x=MIN_PRICE, y=MISSING_DATA))
+missing_data_min_price + geom_point()
+```
+
+Looking at the minimum price and missing data plot above, it appears as though the lower the minimum price, the more listings have missing data. As listing prices' minimums increase, there are less listings with missing data.
+
+#### Average Price & Missing Metadata
+
+```{r echo=FALSE}
+missing_data_avg_price<-ggplot(ct_stats, aes(x=AVG_PRICE, y=MISSING_DATA))
+missing_data_avg_price + geom_point()
+```
+
+Alternatively, when looking at average price and missing data, a majority of the listings with missing data lie between ~$1700 and ~$3000. (Although most census tracts do not have very many listings with missing data). This shows that while most census tracts do not have a significant amount of listings with missing meta data, the census tracts that do have average prices that lie in the middle.
+
+#### Average Price & Section 8 Mentions
+
+```{r echo=FALSE}
+sec8_avg_price<-ggplot(ct_stats, aes(x=AVG_PRICE, y=SECTION_8_MENTIONS))
+sec8_avg_price + geom_point()
+```
+
+Finally, in terms of Section 8, looking at the average price and number of listings that mention section 8, a majority of census tracts only have a small number of listings that mention section 8. The census tracts with a significant amount of mentions have an average price of less than $2500. For census tracts with average prices over $2500, most listings have zero mentions of section 8. 
+
+## Interpretation & Implications
+
+#### Minimum Price & Missing Metadata
+
+The plot for minimum price & missing metadata shows that census tracts with the lowest minimum prices contain more low effort listings. As listing prices' minimums increase, there are less listings with missing metadata. This makes sense because there are many listings with prices that do not make sense for the area (for example, the $10 rent that we saw earlier), which means that whoever posted the listing is either maliciously trying to trick people into looking at their listings or did not do their due diligence in checking for typos. As the minimum price increased into values that made more sense for Boston (approaching $1000 and above), there were less listings with missing metadata.
+
+This has implications for low-income renters because they would typically be looking at the lower end of the spectrum when it comes to prices. If the listings with the lowest rents are tricking people with absurdly low prices and missing useful metadata, this makes the apartment search significantly harder and less reliable.
+
+#### Average Price & Missing Metadata
+
+Alternatively, when looking at average price and missing data, the graph looks different from the minimum price & missing metadata. This could mean that low effort posts are more evenly distributed across price points, rather than just the listings at the lower end. Thus, the average searcher could come across a listing with missing metadata, not just the searchers who are looking for rentals at the lower end of the spectrum.
+
+Ultimately, this shows that the average renter is also faced with lower effort listings. If people with more time and money have to sift through low-effort listings, then the task is likely to be significantly harder for low-income families who are on a time crunch and have less flexibility.
+
+#### Average Price & Section 8
+
+This plot demonstrates that most listings do not mention section 8 or vouchers at all, and there are very few that do. However, even if a listing does not mention section 8, the searcher can still apply for the apartment and pay with the voucher. Still, some landlords discriminate against people with vouchers and choose not to rent to the voucher-holder (which is illegal per Massachusetts law).
+
+The fact that very little listings mention section 8 makes the housing search incredibly difficult for renters with public assistance. They could waste valuable time reaching out to a landlord to see if they accept vouchers only to find out that they do not. There is also the case that landlords would accept the voucher, but then find out that they would not get enough money from the state to support the tenant and ultimately change their minds. Because vouchers have an expiration date, any wasted time with the housing search could mean that the vouchers would expire and the renter would have to wait in a multi-year waiting list all over again. Also, even if renters were able to find an apartment, because of the time crunch, it could also mean that voucher-holders end up settling in hazardous apartments with unreliable landlords.
