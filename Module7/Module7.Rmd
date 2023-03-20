@@ -118,11 +118,11 @@ I first imported the data and filtered it by the Census tracts in Boston.
 
 ```{r}
 # Importing low to medium income data & filtering by Boston census tracts
-ltm<-st_read('Low_to_Moderate_Income_Population_by_Tract/Low_to_Moderate_Income_Population_by_Tract.shp')
+ltm<-st_read('tracts/Low_to_Moderate_Income_Population_by_Tract/Low_to_Moderate_Income_Population_by_Tract.shp')
 ltm_boston<-ltm %>% filter(GEOID %in% census_tract_list_bos)
 
 # Importing HCV & filtering by Boston census tracts
-hcv<-st_read('Housing_Choice_Vouchers_by_Tract/HOUSING_CHOICE_VOUCHERS_BY_TRACT.shp')
+hcv<-st_read('tracts/Housing_Choice_Vouchers_by_Tract/HOUSING_CHOICE_VOUCHERS_BY_TRACT.shp')
 hcv_boston<-hcv %>% filter(GEOID %in% census_tract_list_bos)
 ```
 

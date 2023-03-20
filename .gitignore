@@ -6,3 +6,8 @@ dataverse_files/
 *.pdf
 *.docx
 *.csv
+*.png
+*.xlsx
+Module7/tracts
+*.zip
+CityExploration2/tracts
