@@ -1,0 +1,248 @@
+---
+title: "Module9"
+author: "Blair Wong"
+date: "2023-03-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(GGally)
+library(Hmisc)
+
+# Importing Data
+craigslist_listings<-read.csv('../CRAIGSLIST.Listings.csv')
+census_tract_boston<-read.csv('../census-tract-data-boston.csv')
+census_tract_other<-read.csv('../census-tract-other-cities.csv')
+
+# Append 25025 to census tract IDs for other census tracts
+census_tract_other$CENSUS_TRACT_ID = paste('25025', census_tract_other$CENSUS_TRACT_ID, sep="")
+
+# Create & append lists
+census_tract_list_bos<-as.list(census_tract_boston$GEOCODE)
+census_tract_list_other<-as.list(census_tract_other$CENSUS_TRACT_ID)
+census_tract_list<-append(census_tract_list_bos, census_tract_list_other)
+
+# Filter by census tract ID's
+craigslist_listings<-craigslist_listings %>% filter(CT_ID_10 %in% census_tract_list) %>% select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LISTING_DAY,BODY,LOCATION,AREA_SQFT,PRICE,CT_ID_10)
+
+#Aggregations
+
+ct_listings<-data.frame(table(craigslist_listings$CT_ID_10))
+colnames(ct_listings)<-c("CT_ID_10", "COUNT")
+
+# Price
+ct_price_avg<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_PRICE=mean(PRICE))
+
+ct_price_min<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MIN_PRICE=min(PRICE))
+
+ct_price_max<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MAX_PRICE=max(PRICE))
+
+ct_price<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_PRICE=mean(PRICE),
+            MIN_PRICE=min(PRICE),
+            MAX_PRICE=max(PRICE),
+            PRICE_OUTLIERS=(sum(PRICE < 300)))
+
+# Square Ft
+ct_sqft<-filter(craigslist_listings, !is.na(AREA_SQFT))
+ct_sqft<-ct_sqft %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_SQFT=mean(AREA_SQFT, na.rm = TRUE),
+            MIN_SQFT=min(AREA_SQFT, na.rm = TRUE),
+            MAX_SQFT=max(AREA_SQFT, na.rm = TRUE),
+            SQFT_outliers=(sum((AREA_SQFT > 3000) | (AREA_SQFT < 150))))
+
+# Section 8
+craigslist_listings$SECTION_8 <- as.integer(grepl('section 8', craigslist_listings$BODY, fixed = FALSE, ignore.case = TRUE) | grepl('voucher', craigslist_listings$BODY, fixed = FALSE, ignore.case = TRUE))
+craigslist_listings$NO_SECTION_8 <- as.integer(grepl('No section 8', craigslist_listings$BODY, fixed = TRUE) | grepl('no section 8', craigslist_listings$BODY, fixed = TRUE))
+
+ct_sec8<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(NO_SECTION_8=sum(NO_SECTION_8),
+            SECTION_8_MENTIONS=sum(SECTION_8))
+
+ct_sec8$YES_SECTION_8<-(ct_sec8$SECTION_8_MENTIONS - ct_sec8$NO_SECTION_8)
+
+ct_sec8$PER_YES_SECTION_8<-ct_sec8$YES_SECTION_8 / ct_listings$COUNT
+ct_sec8$PER_NO_SECTION_8<-ct_sec8$NO_SECTION_8 / ct_listings$COUNT
+
+# Missing meta data
+craigslist_listings$MISSING_DATA <- ifelse(is.na(craigslist_listings$AREA_SQFT) | (craigslist_listings$LOCATION == ''), 1, 0)
+
+ct_missing_data<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MISSING_DATA=sum(MISSING_DATA))
+
+# Body length
+craigslist_listings$BODY_STRING_COUNT <- str_count(craigslist_listings$BODY, '\\w+')
+craigslist_listings$BODY_STR_COUNT_LESS <- ifelse(craigslist_listings$BODY_STRING_COUNT < 15, 1, 0)
+craigslist_listings$BODY_STR_COUNT_OVER <- ifelse(craigslist_listings$BODY_STRING_COUNT > 1500, 1, 0)
+ct_body_str_count<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(BODY_STR_COUNT_LESS=sum(BODY_STR_COUNT_LESS),
+            BODY_STR_COUNT_OVER=sum(BODY_STR_COUNT_OVER),
+            AVG_BODY_STR=mean(BODY_STRING_COUNT))
+
+#Aggregations
+
+ct_listings<-data.frame(table(craigslist_listings$CT_ID_10))
+colnames(ct_listings)<-c("CT_ID_10", "COUNT")
+
+# Price
+ct_price_avg<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_PRICE=mean(PRICE))
+
+ct_price_min<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MIN_PRICE=min(PRICE))
+
+ct_price_max<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MAX_PRICE=max(PRICE))
+
+ct_price<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_PRICE=mean(PRICE),
+            MIN_PRICE=min(PRICE),
+            MAX_PRICE=max(PRICE),
+            PRICE_OUTLIERS=(sum(PRICE < 300)))
+
+# Square Ft
+ct_sqft<-filter(craigslist_listings, !is.na(AREA_SQFT))
+ct_sqft<-ct_sqft %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_SQFT=mean(AREA_SQFT, na.rm = TRUE),
+            MIN_SQFT=min(AREA_SQFT, na.rm = TRUE),
+            MAX_SQFT=max(AREA_SQFT, na.rm = TRUE),
+            SQFT_outliers=(sum((AREA_SQFT > 3000) | (AREA_SQFT < 150))))
+
+# Section 8
+craigslist_listings$SECTION_8 <- as.integer(grepl('section 8', craigslist_listings$BODY, fixed = FALSE, ignore.case = TRUE) | grepl('voucher', craigslist_listings$BODY, fixed = FALSE, ignore.case = TRUE))
+craigslist_listings$NO_SECTION_8 <- as.integer(grepl('No section 8', craigslist_listings$BODY, fixed = TRUE) | grepl('no section 8', craigslist_listings$BODY, fixed = TRUE))
+
+ct_sec8<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(NO_SECTION_8=sum(NO_SECTION_8),
+            SECTION_8_MENTIONS=sum(SECTION_8))
+
+ct_sec8$YES_SECTION_8<-(ct_sec8$SECTION_8_MENTIONS - ct_sec8$NO_SECTION_8)
+
+ct_sec8$PER_YES_SECTION_8<-ct_sec8$YES_SECTION_8 / ct_listings$COUNT
+ct_sec8$PER_NO_SECTION_8<-ct_sec8$NO_SECTION_8 / ct_listings$COUNT
+
+# Missing meta data
+craigslist_listings$MISSING_DATA <- ifelse(is.na(craigslist_listings$AREA_SQFT) | (craigslist_listings$LOCATION == ''), 1, 0)
+
+ct_missing_data<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MISSING_DATA=sum(MISSING_DATA))
+
+# Body length
+craigslist_listings$BODY_STRING_COUNT <- str_count(craigslist_listings$BODY, '\\w+')
+craigslist_listings$BODY_STR_COUNT_LESS <- ifelse(craigslist_listings$BODY_STRING_COUNT < 15, 1, 0)
+craigslist_listings$BODY_STR_COUNT_OVER <- ifelse(craigslist_listings$BODY_STRING_COUNT > 1500, 1, 0)
+ct_body_str_count<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(BODY_STR_COUNT_LESS=sum(BODY_STR_COUNT_LESS),
+            BODY_STR_COUNT_OVER=sum(BODY_STR_COUNT_OVER),
+            AVG_BODY_STR=mean(BODY_STRING_COUNT))
+
+# Merge
+ct_stats<-merge(ct_listings, ct_price, by = 'CT_ID_10')
+ct_stats<-merge(ct_stats, ct_sqft, by ='CT_ID_10')
+ct_stats<-merge(ct_stats, ct_sec8, by ='CT_ID_10')
+ct_stats<-merge(ct_stats, ct_missing_data, by = 'CT_ID_10')
+ct_stats<-merge(ct_stats, ct_body_str_count, by = 'CT_ID_10')
+```
+
+## Background
+
+Like previous explorations, I have filtered the Craigslist listings to census tracts in Boston and the surrounding cities. I then aggregated the data by census tracts and added new descriptive variables. I have chosen to focus on variables that might describe the quality of a rental listing from the perspective of a low-income searcher based on the exploration from Building Latent Constructs.
+
+The variables I will focus on in this exploration are:
+
+- `COUNT`: The frequency of listings within the census tract.
+- `AVERAGE_PRICE`: The mean rental price for the units within a census tract.
+- `PER_YES_SECTION_8`: The percentage of listings in the census tract that welcomes Section 8 vouchers.
+- `PER_NO_SECTION_8`: The percentage of listings in the census tract that do not welcome Section 8 vouchers.
+- `AVG_BODY_STR`: The average number of words in the `BODY` of the listing.
+- `MISSING_DATA`: The number of listings missing either square footage information or location information.
+
+## Methods
+
+After the initial set up, filtering, and aggregation, I then selected the variables that I listed above.
+
+```{r}
+ct_stats<-ct_stats %>%
+  select('CT_ID_10', 'COUNT', 'AVG_PRICE', 'PER_YES_SECTION_8', 'PER_NO_SECTION_8', 'AVG_BODY_STR', 'MISSING_DATA')
+```
+
+I then generated a table of the correlation coefficients with all of the selected variables.
+
+```{r}
+ct_stats %>%
+  select(-'CT_ID_10') %>%
+  cor()
+```
+
+Based on the table, I then investigated some of the more notable correlations based on the higher correlation coefficients.
+
+```{r}
+cor.test(ct_stats$COUNT, ct_stats$MISSING_DATA)
+cor.test(ct_stats$AVG_BODY_STR, ct_stats$PER_YES_SECTION_8)
+```
+
+I then created plots for each relationship.
+```{r}
+ggplot(ct_stats, aes(x=COUNT, y=MISSING_DATA)) + geom_point(size=2, shape=23)
+ggplot(ct_stats, aes(x=AVG_BODY_STR, y=PER_YES_SECTION_8)) + geom_point(size=2, shape=23)
+```
+
+Finally, I constructed a Gally plot of all of the variables.
+```{r}
+ggpairs(data=ct_stats, columns=2:7)
+```
+
+## Analysis
+
+Based on the correlation coefficients available in the first table, it appears as though `COUNT` and `MISSING_DATA` have the strongest correlation with a coefficient of 0.982. The other variables have a much weaker correlation with coefficients less than 0.3. Of the relatively higher coefficients, the most notable one is `AVG_BODY_STR` and `PER_YES_SECTION_8`, indicating a negative correlation (-0.307).
+
+A more in depth look at the correlations show that the relationship between `COUNT` and `MISSING_DATA` have a very low p value of 2.2e-16, and a 95% confidence interval of 0.9753 and 0.0963. This means that the correlation is statistically significant.
+
+In terms of `AVG_BODY_STR` and `PER_YES_SECTION_8`, the p value is much higher at 3.341e-05, making it less statistically significant than `COUNT` and `MISSING_DATA`, but still statistically significant since it is less than 0.05. The 95% confidence interval is between -0.4354456 and -0.1669916.
+
+This information is reflected in the plots where `COUNT` and `MISSING_DATA` have dots that are almost in a neat straight line, trending positively. For `AVG_BODY_STR` and `PER_YES_SECTION_8`, the data is much less clear, but there is a general negative trend. However, most of the dots lie close to 0.
+
+Finally, the gally plot shows the correlations between all of the variables. TWo relationships have 3 stars, indicating that the p value is less than 0.001 (`MISSING_DATA` & `COUNT`, and `AVG_BODY_STR` & `PER_YES_SECTION_8`). Three relationships have 2 stars, indicating that p is less than 0.01 (`PER_YES_SECTION_8` & `COUNT`, and `AVG_BODY_STR` & `COUNT`, and `MISSING_DATA` & `PER_YES_SECTION_8`). Finally, two relationships have 1 star, indicating that p is less than 0.05 (`AVG_BODY_STR`& `AVG_PRICE`, `AVG_BODY_STR` & `MISSING_DATA`).
+
+## Interpretation & Implications
+
+**COUNT and MISSING_DATA**
+
+The `COUNT` and `MISSING_DATA` have the strongest correlation at 0.982 and is considered statistically significant. This makes sense because the more listings a census tract has, the higher likelihood that there would be listings with missing data. This shows that although some areas may have more listings, it does not always indicate high quality listings or listings with enough information. At the same time, missing data does not always indicate a bad listing-- sometimes the information for location and square footage are in the description. Additionally, high-quality photos can also make up for the lack of information. 
+
+Although `COUNT` and `MISSING_DATA` have a strong relationship, because there are other means for a listing to convey information to the searcher (description, pictures), it is not as imperative to have a location or square footage data when looking at the listing itself. However, if that information is not accurate (for example, if the location is listed as 'Dorchester' when in reality, the location is in 'Allston'), then it could potentially lead searchers astray, especially searchers who don't speak English as a primary language or those who are technologically inept.
+
+**AVG_BODY_STR and PER_YES_SECTION_8**
+
+The relationship between `AVG_BODY_STR` and `PER_YES_SECTION_8` is less clear than `COUNT` and `MISSING_DATA`, but it is still statistically significant and trends in a negative direction. This indicates that as the average length of the body (description of the listing) increases, the percentage of listings that welcome Section 8 vouchers decrease. While the average body length in itself does not show the overall quality of the listing, this could still mean that higher effort listings where the poster provides details on the amenities, the neighborhood, etc have less mentions of Section 8 vouchers. Because the listings that are longer provide many more details without mentioning Section 8, this could potentially mean that the people posting the listings are not writing them with voucher holders in mind (even though they do not explicitly state that vouchers are not welcome). 
+
+From the perspective of a renter, having listings that explicitly welcome Section 8 tenants is very important as it would save them valuable time. When listings do not mention Section 8, not only do searchers have to spend time asking, but they also risk voucher discrimination (which is illegal in Massachusetts). From the perspective of housing policy as a whole, Craigslist data on Section 8 Vouchers can potentially be a measure of how successful the program is. 
+
+**Overall**
+
+Based on the gally plot above, most variables do not have a statistically significant correlation with each other, and almost all of the dot plots do not show a neat line (except for `COUNT` and `MISSING_DATA`). This makes sense given that for variables related to Section 8, there are few census tracts that have a significant number of mentions of Section 8. For `AVG_BODY_STR`, there are so few listings that are outliers, which means that `BODY` length does not convey as much useful information. Therefore, in order to have a more complete analysis on the quality of Craigslist listings, it would be necessary to collect additional data from the listings that were not available in the original data scraping (whether the listing has pictures, matching the Google Maps location with the `LOCATION` variable, information on who is renting the unit-- if it's an individual landlord or management company, how many people have favorited, shared, or flagged a listing, etc.). In terms of the rental scene as a whole, it would be useful to pull information from other sites such as Zillow, Facebook Marketplace, Zumper, etc to gain further understanding of all rentals available in Boston. Further work could also be done to compare the usefulness of all the tools to determine which one is best for low-income searchers or to determine ways to streamline the search across all the platforms (for example, adding additional filters for voucher approval or subsidized rental units, etc.). 
