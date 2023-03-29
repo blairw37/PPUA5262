@@ -1,7 +1,5 @@
 library(tidyverse)
 library(ggplot2)
-library(GGally)
-library(Hmisc)
 
 # Importing Data
 craigslist_listings<-read.csv('CRAIGSLIST.Listings.csv')
@@ -116,7 +114,7 @@ summary(aov_sec8)
 TukeyHSD(aov_sec8)
 
 # R^2
-r2<-0.0714/(0.0714 + 1.0509)
+r2<-(714)/(714+10509)
 r2
 
 # Visualizing
