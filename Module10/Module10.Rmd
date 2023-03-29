@@ -1,0 +1,247 @@
+---
+title: "Module 10 - Comparing Groups"
+author: "Blair Wong"
+date: "2023-03-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(sf)
+library(ggmap)
+
+# Importing Data
+craigslist_listings<-read.csv('../CRAIGSLIST.Listings.csv')
+census_tract_boston<-read.csv('../census-tract-data-boston.csv')
+census_tract_other<-read.csv('../census-tract-other-cities.csv')
+
+# Append 25025 to census tract IDs for other census tracts
+census_tract_other$CENSUS_TRACT_ID = paste('25025', census_tract_other$CENSUS_TRACT_ID, sep="")
+
+# Create & append lists
+census_tract_list_bos<-as.list(census_tract_boston$GEOCODE)
+census_tract_list_other<-as.list(census_tract_other$CENSUS_TRACT_ID)
+census_tract_list<-append(census_tract_list_bos, census_tract_list_other)
+
+# Filter by census tract ID's
+craigslist_listings<-craigslist_listings %>% filter(CT_ID_10 %in% census_tract_list) %>% select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LISTING_DAY,BODY,LOCATION,AREA_SQFT,PRICE,CT_ID_10)
+
+#Aggregations
+
+ct_listings<-data.frame(table(craigslist_listings$CT_ID_10))
+colnames(ct_listings)<-c("CT_ID_10", "COUNT")
+
+# Price
+ct_price_avg<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_PRICE=mean(PRICE))
+
+ct_price_min<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MIN_PRICE=min(PRICE))
+
+ct_price_max<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MAX_PRICE=max(PRICE))
+
+ct_price<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_PRICE=mean(PRICE),
+            MIN_PRICE=min(PRICE),
+            MAX_PRICE=max(PRICE),
+            PRICE_OUTLIERS=(sum(PRICE < 300)))
+
+ct_price$PRICE_OUTLIERS<-ifelse(ct_price$PRICE_OUTLIERS>0, 1,0)
+
+# Square Ft
+ct_sqft<-filter(craigslist_listings, !is.na(AREA_SQFT))
+ct_sqft<-ct_sqft %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_SQFT=mean(AREA_SQFT, na.rm = TRUE),
+            MIN_SQFT=min(AREA_SQFT, na.rm = TRUE),
+            MAX_SQFT=max(AREA_SQFT, na.rm = TRUE),
+            SQFT_outliers=(sum((AREA_SQFT > 3000) | (AREA_SQFT < 150))))
+
+ct_sqft$SQFT_outliers<-ifelse(ct_sqft$SQFT_outliers>0,1,0)
+
+# Section 8
+craigslist_listings$SECTION_8 <- as.integer(grepl('section 8', craigslist_listings$BODY, fixed = FALSE, ignore.case = TRUE) | grepl('voucher', craigslist_listings$BODY, fixed = FALSE, ignore.case = TRUE))
+craigslist_listings$NO_SECTION_8 <- as.integer(grepl('No section 8', craigslist_listings$BODY, fixed = TRUE) | grepl('no section 8', craigslist_listings$BODY, fixed = TRUE))
+
+ct_sec8<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(NO_SECTION_8=sum(NO_SECTION_8),
+            SECTION_8_MENTIONS=sum(SECTION_8))
+
+ct_sec8$YES_SECTION_8<-(ct_sec8$SECTION_8_MENTIONS - ct_sec8$NO_SECTION_8)
+
+ct_sec8$PER_YES_SECTION_8<-ct_sec8$YES_SECTION_8 / ct_listings$COUNT * 100
+ct_sec8$PER_NO_SECTION_8<-ct_sec8$NO_SECTION_8 / ct_listings$COUNT * 100
+
+# Missing meta data
+craigslist_listings$MISSING_DATA <- ifelse(is.na(craigslist_listings$AREA_SQFT) | (craigslist_listings$LOCATION == ''), 1, 0)
+
+ct_missing_data<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MISSING_DATA=sum(MISSING_DATA))
+
+# Body length
+craigslist_listings$BODY_STRING_COUNT <- str_count(craigslist_listings$BODY, '\\w+')
+craigslist_listings$BODY_STR_COUNT_LESS <- ifelse(craigslist_listings$BODY_STRING_COUNT < 15, 1, 0)
+craigslist_listings$BODY_STR_COUNT_OVER <- ifelse(craigslist_listings$BODY_STRING_COUNT > 1500, 1, 0)
+ct_body_str_count<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(BODY_STR_COUNT_LESS=sum(BODY_STR_COUNT_LESS),
+            BODY_STR_COUNT_OVER=sum(BODY_STR_COUNT_OVER),
+            AVG_BODY_STR=mean(BODY_STRING_COUNT))
+
+# Merge
+ct_stats<-merge(ct_listings, ct_price, by = 'CT_ID_10')
+ct_stats<-merge(ct_stats, ct_sqft, by ='CT_ID_10')
+ct_stats<-merge(ct_stats, ct_sec8, by ='CT_ID_10')
+ct_stats<-merge(ct_stats, ct_missing_data, by = 'CT_ID_10')
+ct_stats<-merge(ct_stats, ct_body_str_count, by = 'CT_ID_10')
+```
+
+## Background
+As with previous explorations, I aggregated the data by census tracts and filtered the census tracts to tracts in Boston and the surrounding cities. For this assignment, I decided to look at the following variables as outcome variables:
+
+- `MISSING_DATA`: The average number of listings that are missing either `LOCATION` or `AREA_SQFT`. I was interested in this variable because I wanted to see if census tracts with a high number of listings that were missing data also had pricing and square footage outliers, which would further indicate low-effort listings.
+- `PER_YES_SECTION_8`: The percentage of listings within a census tract that welcome Section 8 voucher holders. I was interested in this variable because I wanted to understand the differences between census tracts that welcome Section 8 vouchers and the cost of the units.
+
+Therefore, the categorical variables I chose for `MISSING_DATA` and `PER_YES_SECTION_8` are listed below:
+
+- `PRICE_OUTLIERS`: In previous explorations, this variable provided the number of price outliers in the census tract (`PRICE` < 300). However, for this exploration, it was assigned either a 0 for no price outliers, and 1 for at least 1 price outlier.
+- `SQFT_outliers`: Like `PRICE_OUTLIERS`, this variable is assigned a value of 0 if it had no square footage outliers and a value of 1 if it had a least one. Listings were considered an outlier if they over 3000 sqft and under 150 sqft.
+- `PRICE_PER_SQFT_QUARTILE`: I first calculated the price per square footage, and then split all of the aggregated `PRICE_PER_SQFT` values and divided them into four quartiles. I will then compare the percentage of listings that welcome Section 8 vouchers across the four quartiles.
+
+```{r}
+# Calculate price per sqft
+ct_stats$PRICE_PER_SQFT<-ct_stats$AVG_PRICE/ct_stats$AVG_SQFT
+
+# Split into quartiles
+ct_stats<-ct_stats %>% mutate(quartile = ntile(PRICE_PER_SQFT, 4))
+names(ct_stats)[21]<-'PRICE_PER_SQFT_QUARTILE'
+```
+
+## Methods
+
+#### Two-Sample T-Test
+
+I conducted a two-sample T-Test for `MISSING_DATA` for `PRICE_OUTLIERS` and `SQFT_outliers`.
+
+```{r}
+# Two sample T-Test for PRICE_OUTLIERS & SQFT_outliers
+t.test(MISSING_DATA~PRICE_OUTLIERS,data=ct_stats)
+t.test(MISSING_DATA~SQFT_outliers,data=ct_stats)
+```
+
+#### ANOVA
+
+I then conducted an ANOVA using `PER_YES_SECTION_8` and `PRICE_PER_SQFT_QUARTILE`.
+
+```{r}
+# Anova
+aov_sec8<-aov(PER_YES_SECTION_8~as.factor(PRICE_PER_SQFT_QUARTILE), data=ct_stats)
+summary(aov_sec8)
+```
+
+I also calculated the R^2 value based on the results from the ANOVA test.
+
+```{r}
+# R^2
+r2<-(714)/(714+10509)
+r2
+```
+
+#### TukeyHSD
+
+Afterwards, I conducted a post-hoc test with TukeyHSD.
+
+```{r}
+# TukeyHSD
+TukeyHSD(aov_sec8)
+```
+
+#### Visualization
+
+Finally, I created a bar graph to show the differences between the percentage of listings that welcome Section 8 vouchers across the four price per square footage quartiles.
+
+```{r}
+# Visualization
+means<-aggregate(PER_YES_SECTION_8~PRICE_PER_SQFT_QUARTILE,data=ct_stats,mean)
+
+ses<-aggregate(PER_YES_SECTION_8~PRICE_PER_SQFT_QUARTILE,data=ct_stats,
+               function(x) sd(x, na.rm=TRUE/sqrt(length(!is.na(x)))))
+
+names(ses)[2]<-'se_PER_YES_SECTION_8'
+
+means<-merge(means,ses,by='PRICE_PER_SQFT_QUARTILE')
+
+means<-transform(means, lower=PER_YES_SECTION_8-1.96*se_PER_YES_SECTION_8, upper=PER_YES_SECTION_8+1.96*se_PER_YES_SECTION_8)
+
+bar<-ggplot(data=means,aes(x=PRICE_PER_SQFT_QUARTILE, y=PER_YES_SECTION_8))
+bar + geom_bar(stat="identity",position="dodge",fill="purple") +
+  ylab('Percentage of Listings \nThat Welcome Section 8 Vouchers') +
+  geom_errorbar(aes(ymax=upper, ymin=lower),
+                position=position_dodge(.9))
+```
+
+## Analysis
+
+#### PRICE_OUTLERS & MISSING_DATA
+
+Based on the two-sample T-Test results when determining if there is a difference in the average number of listings that are missing data between tracts that have at least 1 price outlier, the mean in the group without price outliers is 145.5476, whereas the mean in the group with price outliers is 474.5, a difference of 328.9524. While this is a large number, it is not statistically significant since the p-value is 0.05471. This ultimately means that there is no significant difference in average number of listings with missing data between listings with 0 price outliers and listings with at least 1 price outlier.
+
+#### SQFT_outliers & MISSING_DATA
+
+Unlike `PRICE_OUTLIERS`, `SQFT_outliers` show a much larger difference between tracts with at least 1 square footage outlier and tracts with no square footage outliers. The mean for tracts without square footage outliers is 64.75439, versus the mean for tracts with square footage outliers is 336.54839. Since the p-value is 1.649e-06, the difference is statistically significant. This means that there is a significant difference in the average number of listings with missing data between census tracts with square footage outliers and census tracts without square footage outliers.
+
+#### PER_YES_SECTION_8 & PRICE_PER_SQFT_QUARTILE
+
+Looking at the results from the ANOVA test, we can see that there is a significant (p<0.05) difference of 3.896 $/sqft between the percentage of listings that welcome Section 8 vouchers across the various `PRICE_PER_SQFT_QUARTILES`. After calculating the R^2 value, the quartiles explained 6.36% of the differences.
+
+Digging deeper with the post-hoc TukeyHSD test, we can see that the only significantly difference was between quartile 4 (the highest price per square foot) and quartile 1 (the lowest price per square foot) with the p-value of 0.0087349. Therefore, there are no significant differences between the other quartiles.
+
+This can be seen visually through the bar plot where the percentage in quartile 4 is the lowest and the percentage in quartile 1 is the highest. 
+
+## Interpretation & Implications
+
+#### PRICE_OUTLIERS & SQFT_outliers & MISSING_DATA
+
+The results of the first T-Test show that the difference in the number of listings with missing data was not significantly different between tracts that had price outliers and tracts that did not. This makes sense since price is a required field when creating a Craigslist listing and is a key part of the search for potential renters.
+
+Unlike price outliers, the results of the second T-Test show that there is a significant difference in the number of listings with missing data between census tracts with square footage outliers and census tract without square footage outliers. This makes sense since square footage information is not required when creating the listing. Additionally, it is not as large of a factor as price is when renters are searching for apartments so brokers and landlords likely place less emphasis on it. However, it ultimately does contribute to the quality of a listing because even if the listing has photos, they may not accurately show the size of the apartment.
+
+#### PER_YES_SECTION_8 & PRICE_PER_SQFT_QUARTILE
+
+The only difference in percentage of listings within a census tract that welcomes Section 8 vouchers was between quartile 1 (the least expensive price/sqft) and quartile 4 (the most expensive price/sqft). This is unsurprising given that the neighborhoods that are in the 4th quartile are in neighborhoods such as Back Bay, South End, South Boston, and adjacent to Brookline as seen in the map below. Most of the neighborhoods in the first quartile are further south in Roxbury and Mattapan and parts of Dorchester. They can also be seen in Brighton and East Boston. The one green spot in Back Bay may be due to an outlier where the square footage is significantly high.
+
+Given that there is a significant difference in which census tracts have listings that welcome Section 8 voucher holders, this has implications for renters with vouchers. Because the goal of the Housing Choice Voucher program is to provide people-based resources and allow low-income families to move into different neighborhoods for better opportunities, the data actually shows that there are some neighborhoods that may still be off-limits to voucher holders because they have very few listings that explicitly welcome it. The fact that low-income families do not have access to certain neighborhoods contributes to inequities in housing. Therefore, to bolster the program, policymakers should work towards ensuring that more landlords across the city are actively welcoming vouchers.
+
+```{r echo=FALSE}
+# Importing HCV & filtering by Boston census tracts
+hcv<-st_read('../Module7/tracts/Housing_Choice_Vouchers_by_Tract/HOUSING_CHOICE_VOUCHERS_BY_TRACT.shp')
+hcv_boston<-hcv %>% filter(GEOID %in% census_tract_list_bos)
+
+boston<-get_map(location=c(left = -71.193799, 
+                           bottom = 42.22, 
+                           right = -70.985746, 
+                           top = 42.43),
+                source="stamen")
+boston_map<-ggmap(boston)
+
+colnames(hcv_boston)[colnames(hcv_boston) == 'GEOID'] = "CT_ID_10"
+ct_stats<-merge(hcv_boston, ct_stats, by = "CT_ID_10")
+
+quartile_map<-boston_map + geom_sf(data=ct_stats, aes(fill=as.factor(PRICE_PER_SQFT_QUARTILE)), inherit.aes = FALSE) +
+  scale_fill_manual(values=c("green", "blue", "yellow", "red")) +
+  labs(fill = "Price per Square Ft Quartiles")
+
+quartile_map
+```
