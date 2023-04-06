@@ -2,7 +2,8 @@
 title: "Module 10 - Comparing Groups"
 author: "Blair Wong"
 date: "2023-03-29"
-output: html_document
+output:
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}

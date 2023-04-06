@@ -1,0 +1,232 @@
+---
+title: "Module 11 - Regression"
+author: "Blair Wong"
+date: "2023-04-06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(sf)
+library(QuantPsyc)
+library(GGally)
+library(Hmisc)
+
+# Importing Data
+craigslist_listings<-read.csv('../CRAIGSLIST.Listings.csv')
+census_tract_boston<-read.csv('../census-tract-data-boston.csv')
+census_tract_other<-read.csv('../census-tract-other-cities.csv')
+redlining<-read.csv('Redlining/Boston_Tracts_2010_HOLC.csv')
+uhi<-read.csv('UrbanLandCoverAndHeatIndex/_Tract_Level_Variables.csv')
+income<-st_read('Low_to_Moderate_Income_Population_by_Tract/Low_to_Moderate_Income_Population_by_Tract.shp')
+
+# Append 25025 to census tract IDs for other census tracts
+census_tract_other$CENSUS_TRACT_ID = paste('25025', census_tract_other$CENSUS_TRACT_ID, sep="")
+
+# Create & append lists
+census_tract_list_bos<-as.list(census_tract_boston$GEOCODE)
+census_tract_list_other<-as.list(census_tract_other$CENSUS_TRACT_ID)
+census_tract_list<-append(census_tract_list_bos, census_tract_list_other)
+
+# Filter by census tract ID's
+craigslist_listings<-craigslist_listings %>% filter(CT_ID_10 %in% census_tract_list) %>% dplyr::select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LISTING_DAY,BODY,LOCATION,AREA_SQFT,PRICE,CT_ID_10)
+
+# Calculate price per square foot
+craigslist_listings<-craigslist_listings %>% filter(!is.na(AREA_SQFT) & AREA_SQFT != 0)
+craigslist_listings$PRICE_PER_SQFT<-craigslist_listings$PRICE / craigslist_listings$AREA_SQFT
+
+# Removing outliers
+craigslist_listings<-craigslist_listings %>% filter(PRICE_PER_SQFT<5)
+
+#Aggregations
+
+ct_listings<-data.frame(table(craigslist_listings$CT_ID_10))
+colnames(ct_listings)<-c("CT_ID_10", "COUNT")
+
+# Price
+ct_price_avg<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_PRICE=mean(PRICE))
+
+ct_price_min<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MIN_PRICE=min(PRICE))
+
+ct_price_max<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MAX_PRICE=max(PRICE))
+
+ct_price<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_PRICE=mean(PRICE),
+            MIN_PRICE=min(PRICE),
+            MAX_PRICE=max(PRICE),
+            PRICE_OUTLIERS=(sum(PRICE < 300)))
+
+# Square Ft
+ct_sqft<-filter(craigslist_listings, !is.na(AREA_SQFT))
+ct_sqft<-ct_sqft %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_SQFT=mean(AREA_SQFT, na.rm = TRUE),
+            MIN_SQFT=min(AREA_SQFT, na.rm = TRUE),
+            MAX_SQFT=max(AREA_SQFT, na.rm = TRUE),
+            SQFT_outliers=(sum((AREA_SQFT > 3000) | (AREA_SQFT < 150))))
+
+# Price per sqft
+ct_price_per_sqft<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_PRICE_PER_SQFT=mean(PRICE_PER_SQFT))
+
+# Section 8
+craigslist_listings$SECTION_8 <- as.integer(grepl('section 8', craigslist_listings$BODY, fixed = FALSE, ignore.case = TRUE) | grepl('voucher', craigslist_listings$BODY, fixed = FALSE, ignore.case = TRUE))
+craigslist_listings$NO_SECTION_8 <- as.integer(grepl('No section 8', craigslist_listings$BODY, fixed = TRUE) | grepl('no section 8', craigslist_listings$BODY, fixed = TRUE))
+
+ct_sec8<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(NO_SECTION_8=sum(NO_SECTION_8),
+            SECTION_8_MENTIONS=sum(SECTION_8))
+
+ct_sec8$YES_SECTION_8<-(ct_sec8$SECTION_8_MENTIONS - ct_sec8$NO_SECTION_8)
+
+ct_sec8$PER_YES_SECTION_8<-ct_sec8$YES_SECTION_8 / ct_listings$COUNT
+ct_sec8$PER_NO_SECTION_8<-ct_sec8$NO_SECTION_8 / ct_listings$COUNT
+ct_sec8$PER_SECTION_8_MENTIONS<-ct_sec8$SECTION_8_MENTIONS / ct_listings$COUNT
+
+# Missing meta data
+craigslist_listings$MISSING_DATA <- ifelse(is.na(craigslist_listings$AREA_SQFT) | (craigslist_listings$LOCATION == ''), 1, 0)
+
+ct_missing_data<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MISSING_DATA=sum(MISSING_DATA))
+
+# Body length
+craigslist_listings$BODY_STRING_COUNT <- str_count(craigslist_listings$BODY, '\\w+')
+craigslist_listings$BODY_STR_COUNT_LESS <- ifelse(craigslist_listings$BODY_STRING_COUNT < 15, 1, 0)
+craigslist_listings$BODY_STR_COUNT_OVER <- ifelse(craigslist_listings$BODY_STRING_COUNT > 1500, 1, 0)
+ct_body_str_count<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(BODY_STR_COUNT_LESS=sum(BODY_STR_COUNT_LESS),
+            BODY_STR_COUNT_OVER=sum(BODY_STR_COUNT_OVER),
+            AVG_BODY_STR=mean(BODY_STRING_COUNT))
+
+# Merge
+ct_stats<-merge(ct_listings, ct_price, by = 'CT_ID_10')
+ct_stats<-merge(ct_stats, ct_sqft, by ='CT_ID_10')
+ct_stats<-merge(ct_stats, ct_sec8, by ='CT_ID_10')
+ct_stats<-merge(ct_stats, ct_missing_data, by = 'CT_ID_10')
+ct_stats<-merge(ct_stats, ct_body_str_count, by = 'CT_ID_10')
+ct_stats<-merge(ct_stats, ct_price_per_sqft, by= 'CT_ID_10')
+
+# Independent variable: PER_YES_SECTION_8
+
+# Merge
+ct_stats<-merge(ct_stats, redlining, by = 'CT_ID_10')
+ct_stats<-merge(ct_stats, uhi, by = 'CT_ID_10', all.x = TRUE)
+ct_stats<-merge(ct_stats, income, by.x = 'CT_ID_10', by.y = 'GEOID')
+```
+
+## Background
+
+Like prior explorations, I aggregated the Craigslist data by census tract and filtered them to census tracts within the Greater Boston area. For this exploration, I decided to focus on `PER_YES_SECTION_8`, the percentage of listings that explicitly mention and approve Section 8 vouchers, as the outcome variable of interest. The reason for this variable is because housing choice vouchers (HCVs) were created as means to allow low-income families to move to better neighborhoods to gain economic and social mobility. Unfortunately, not all landlords are willing to accept vouchers, and some low-income families are explicitly discriminated against because of their voucher status. Investigating how other variables relate to and impact whether listings mention approval of vouchers can help policymakers better understand whether HCVs are serving their purpose and what specific hurdles voucher holders face when searching for housing on Craigslist.
+
+In terms of independent variables, I have selected the following variables:
+
+- `redline`: This variable is from the Boston HOLC 2010 Census Tract data. It contains either a value of 0 or 1 to indicate whether an area was or was not redlined. I chose this variable because redlining's impact still affects communities today and limits peoples' access to resources and mobility. It would be important to understand the relationship between not-redlined communities and whether they are welcoming to Section 8 voucher holders.
+
+- `AVG_PRICE_PER_SQFT`: This variable is calculated by dividing the price of an apartment by its square footage. One of the goals of the voucher program was to deconcentrate poverty. This variable could show us whether the program is successful based on how many landlords in pricier areas actively welcome voucher holders.
+
+- `LOWMODPCT`: This variable is from the HUD data on low to moderate income families by census tracts. Similar to `AVG_PRICE_PER_SQFT`, this could show whether census tracts that welcome Section 8 vouchers are already concentrated in low to moderate income areas, or if they are spread out.
+
+## Methods
+
+#### Correlations
+
+First, I ran correlations with `PER_YES_SECTION_8` for each variable and generated a gally plot.
+
+```{r}
+ct_stats_correlation<-ct_stats %>% dplyr::select('CT_ID_10', 'PER_YES_SECTION_8', 'AVG_PRICE_PER_SQFT', 'redline', 'LOWMODPCT')
+
+ct_stats_correlation %>%
+  dplyr::select(-'CT_ID_10') %>%
+  cor()
+
+rcorr_matrix<-ct_stats_correlation %>%
+  dplyr::select(-'CT_ID_10') %>%
+  as.matrix() %>%
+  rcorr()
+
+rcorr_matrix[3]
+
+ggpairs(data=ct_stats_correlation, columns=2:5)
+```
+
+#### Regression Model
+
+Given that `LOWMODPCT` and `PER_YES_SECTION_8` had a high p-value (p = 0.79448563), making the relationship not significant, I decided to move forward in my analysis without it. Then, I created a regression model with `PER_YES_SECTION_8` as the dependent variable.
+
+```{r}
+ct_stats_filtered<-ct_stats %>%
+  filter(!is.na(PER_YES_SECTION_8) & !is.na(AVG_PRICE_PER_SQFT) & !is.na(redline))
+
+# redline
+reg_redline<-lm(scale(PER_YES_SECTION_8)~scale(redline), data=ct_stats_filtered)
+summary(reg_redline)
+
+# Grades
+reg_grade<-lm(PER_YES_SECTION_8~Grade, data=ct_stats)
+summary(reg_grade)
+
+# AVG_PRICE_PER_SQFT
+reg_avg_price_per_sqft<-lm(scale(PER_YES_SECTION_8)~scale(AVG_PRICE_PER_SQFT), data=ct_stats_filtered)
+summary(reg_avg_price_per_sqft)
+
+# Multi
+reg_multi<-lm(PER_YES_SECTION_8~AVG_PRICE_PER_SQFT + redline, data=ct_stats)
+summary(reg_multi)
+
+lm.beta(reg_multi)
+```
+
+Looking at the multivariate regression, we can see that the `AVG_PRICE_PER_SQFT` variable is significant when the two independent variables are combined.
+
+#### Plotting the Regression
+
+Therefore, I will provide a visualization for the `AVG_PRICE_PER_SQFT` and the `PER_YES_SECTION_8`.
+
+```{r}
+# Price per square ft
+price_per_sqft_plot<-ggplot(data = ct_stats, aes(x=AVG_PRICE_PER_SQFT, y=PER_YES_SECTION_8)) +
+  geom_point() + xlab("Price per Square Ft") + ylab("Percentage of Section 8 Listings")
+price_per_sqft_plot + geom_smooth(method=lm)
+```
+
+## Analysis
+
+#### Correlations
+
+Looking at the correlations, we can see that `PER_YES_SECTION_8` has a negative correlation of -0.354 with `AVG_PRICE_PER_SQFT`, which means that as the average price per square foot rises, the percentage of listings that welcome Section 8 decreases. Similarly, with `redline`, there is a negative correlation of -0.222, which means that for areas that were redlined, there are less listings that welcome Section 8. This could be a positive discovery since this means that not-redlined areas are more welcoming to voucher holders, enabling them to move out of historically redlined neighborhoods. Finally, `LOWMODPCT` has a positive correlation of 0.021, which indicates that as the percentage of low to moderate income households increase, the percentage of listings that welcome Section 8 vouchers increase as well.
+
+In terms of significance, `LOWMODPCT` is not statistically significant since its p-value is 0.794. Alternatively, for `AVG_PRICE_PER_SQFT`, the p-value was 5.783e-06, indicating that it is very statistically significant. The p-value for `redline` was 5.281e-03, making it statistically significant as well.
+
+#### Regression Model
+
+In terms of the regression model, we can see that the shift for `redline` was -2.223e-01, which means that as we move from not redlined to redlined, we can expect the percentage of listings that welcome Section 8 vouchers drops by 0.222, a very small amount. Looking at the grades instead of whether the tract was redlined or not, we can see that there are varying estimates, but the overall p-value is 0.01127, still making it statistically significant as a whole. 
+
+For `AVG_PRICE_PER_SQFT`, we can see that the estimate was -3.540e-01, which is also very small. However, the p-value is 5.783e-06, which means that it is much more statistically significant than `redline`.
+
+Combining `AVG_PRICE_PER_SQFT` and `redline` into a multivariate analysis, we can see that the `AVG_PRICE_PER_SQFT` is much more statistically significant (p = 0.000129) than `redline` (p = 0.161935). Therefore, this means that `AVG_PRICE_PER_SQFT` plays a much larger role in determining the percentage of listings that welcome Section 8 vouchers.
+
+#### Plotting the Regression
+
+Looking at the regression plot, we can see that a majority of the tracts with a higher percentage of listings that welcome Section 8 vouchers are below $3/sqft. Therefore, as the price per square foot increases, the percentage decreases. Since a majority of the listings did not mention Section 8, let alone welcome them to begin with, the line remains relatively low (with a y-intercept of -3.540e-01).
+
+## Interpretation & Implications
+
+Based on these findings, Craigslist is not a housing search tool that is helpful for low-income families with vouchers. While redlining and income level do not have a significant impact on whether Craigslist listings welcome Section 8 vouchers or not, the average price per square footage does reliably predict whether posters mention and welcome Section 8 vouchers. As apartments become more expensive, less listings welcome Section 8. This perpetuates the economic and racial segregation because it keeps poorer families in areas that are not as wealthy and exacerbates the problem of concentrating poverty. Another important thing to note is the small number of listings that mention Section 8 at all. While it is illegal for landlords to discriminate based on voucher status, the lack of explicit mention of Section 8 vouchers leaves low-income families in uncertainty and adds more time and confusion to their search.
+
+This ultimately shows that there is more work to be done in holding landlords accountable to accepting vouchers across the city and making the housing search as seamless and quick as possible for low-income families with vouchers.
