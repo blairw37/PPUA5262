@@ -64,3 +64,6 @@ used in more expensive areas.
 ![](README_figs/README-boxplot1-1.png)<!-- -->
 
 ![](README_figs/README-boxplot2-1.png)<!-- -->
+
+View the analyses for each module
+[here](https://blairw37.github.io/PPUA5262).
