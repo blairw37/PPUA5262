@@ -46,7 +46,7 @@ Interestingly, summer and fall 2021 did not see the same number of
 listings. This potentially indicates that there is less of an exodus
 from the city. September 2021 saw higher numbers as expected due to the
 return of college students.
-![](README_files/figure-gfm/unnamed-chunk-1-1.png)<!-- -->
+![](README_figs/README-unnamed-chunk-1-1.png)<!-- -->
 
 The first box plot visualization shows the top five census tracts with
 the highest average price per square foot. Each red dot represents a
@@ -60,6 +60,6 @@ landlords/brokers and potential tenants who use Craigslist as a means of
 finding a rental as it shows that Craigslist is perhaps more frequently
 used in more expensive areas.
 
-![](README_files/figure-gfm/unnamed-chunk-2-1.png)<!-- -->
+![](README_figs/README-unnamed-chunk-2-1.png)<!-- -->
 
-![](README_files/figure-gfm/unnamed-chunk-3-1.png)<!-- -->
+![](README_figs/README-unnamed-chunk-3-1.png)<!-- -->
