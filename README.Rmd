@@ -102,3 +102,5 @@ craigslist_listings_subset_box<-filter(craigslist_listings_subset, CT_ID_10_SUB 
 box_dot_plot_bottom<-ggplot(craigslist_listings_subset_box, aes(CT_ID_10_SUB, PRICE_PER_SQ_FT)) + geom_boxplot() + geom_dotplot(binaxis = 'y', stackdir = 'center', dotsize = .5, fill='blue', binwidth = 0.15) + theme(axis.text.x = element_text(angle=45, vjust=0.5)) + labs(title= "Bottom 5 Average Price per Square Ft Census Tracts", x="Census Tracts", y="Price per Square Ft")
 box_dot_plot_bottom
 ```
+
+View the analyses for each module [here](https://blairw37.github.io/PPUA5262).
