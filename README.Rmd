@@ -37,9 +37,9 @@ Considering the listings within the city of Boston and its surrounding cities:
 This graph shows the number of listings over time. As previously mentioned, the highest number of listings were in July 2020, and the lowest was in October 2021. One of the possible reasons for why the listings were higher in the summer of 2020 is because of the higher number of people leaving the city due to the COVID-19 pandemic. Interestingly, summer and fall 2021 did not see the same number of listings. This potentially indicates that there is less of an exodus from the city. September 2021 saw higher numbers as expected due to the return of college students.
 ```{r echo = FALSE}
 
-craigslist_listings<-read.csv('../data/CRAIGSLIST.Listings.csv')
-census_tract_boston<-read.csv('../data/census-tract-data-boston.csv')
-census_tract_other<-read.csv('../data/census-tract-other-cities.csv')
+craigslist_listings<-read.csv('data/CRAIGSLIST.Listings.csv')
+census_tract_boston<-read.csv('data/census-tract-data-boston.csv')
+census_tract_other<-read.csv('data/census-tract-other-cities.csv')
 
 # Convert Census Tract ID to characters
 craigslist_listings$CT_ID_10<-as.character(craigslist_listings$CT_ID_10)
