@@ -7,15 +7,15 @@ library(modelsummary)
 library(formattable)
 
 # Importing Data
-craigslist_listings<-read.csv('CRAIGSLIST.Listings.csv')
-census_tract_boston<-read.csv('census-tract-data-boston.csv')
-census_tract_other<-read.csv('census-tract-other-cities.csv')
-census_indicators<-read.csv('Final/census_indicators/ACS_1519_TRACT.csv')
+craigslist_listings<-read.csv('data/CRAIGSLIST.Listings.csv')
+census_tract_boston<-read.csv('data/census-tract-data-boston.csv')
+census_tract_other<-read.csv('data/census-tract-other-cities.csv')
+census_indicators<-read.csv('data/census_indicators/ACS_1519_TRACT.csv')
 
 # Importing maps
-redline<-st_read('Final/RedliningMaps/Boston_1938_HOLC/Boston_1938_HOLC.shp')
-ltm_income<-st_read('Final/Low_to_Moderate_Income_Population_by_Tract/Low_to_Moderate_Income_Population_by_Tract.shp')
-urban_renewal<-st_read('Final/Other_Important_Planning_Boundaries_layers/Other_Important_Planning_Boundaries_layers.shp')
+redline<-st_read('data/RedliningMaps/Boston_1938_HOLC/Boston_1938_HOLC.shp')
+ltm_income<-st_read('data/Low_to_Moderate_Income_Population_by_Tract/Low_to_Moderate_Income_Population_by_Tract.shp')
+urban_renewal<-st_read('data/Other_Important_Planning_Boundaries_layers/Other_Important_Planning_Boundaries_layers.shp')
 
 # Append 25025 to census tract IDs for other census tracts
 census_tract_other$CENSUS_TRACT_ID = paste('25025', census_tract_other$CENSUS_TRACT_ID, sep="")

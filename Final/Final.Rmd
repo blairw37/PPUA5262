@@ -1,0 +1,477 @@
+---
+title: "Using Craigslist Data to Evaluate the Housing Choice Voucher Program and the Overall Rental Scene in Boston"
+author: "Blair Wong"
+date: "2023-05-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(sf)
+library(ggmap)
+library(forcats)
+library(modelsummary)
+library(formattable)
+```
+
+```{r echo=FALSE}
+# Importing Data
+craigslist_listings<-read.csv('../data/CRAIGSLIST.Listings.csv')
+census_tract_boston<-read.csv('../data/census-tract-data-boston.csv')
+census_tract_other<-read.csv('../data/census-tract-other-cities.csv')
+census_indicators<-read.csv('../data/census_indicators/ACS_1519_TRACT.csv')
+
+# Importing maps
+redline<-st_read('../data/RedliningMaps/Boston_1938_HOLC/Boston_1938_HOLC.shp')
+ltm_income<-st_read('../data/Low_to_Moderate_Income_Population_by_Tract/Low_to_Moderate_Income_Population_by_Tract.shp')
+urban_renewal<-st_read('../data/Other_Important_Planning_Boundaries_layers/Other_Important_Planning_Boundaries_layers.shp')
+
+# Append 25025 to census tract IDs for other census tracts
+census_tract_other$CENSUS_TRACT_ID = paste('25025', census_tract_other$CENSUS_TRACT_ID, sep="")
+
+# Create & append lists
+census_tract_list_bos<-as.list(census_tract_boston$GEOCODE)
+census_tract_list_other<-as.list(census_tract_other$CENSUS_TRACT_ID)
+census_tract_list<-append(census_tract_list_bos, census_tract_list_other)
+
+# Filter by census tract ID's
+craigslist_listings<-craigslist_listings %>% filter(CT_ID_10 %in% census_tract_list) %>% dplyr::select(LISTING_ID,LISTING_YEAR,LISTING_MONTH,LISTING_DAY,BODY,LOCATION,AREA_SQFT,PRICE,CT_ID_10)
+ltm_income<-ltm_income %>% filter(GEOID %in% census_tract_list)
+census_indicators<-census_indicators %>% filter(CT_ID_10 %in% census_tract_list)
+
+# Calculate price per square foot
+# craigslist_listings<-craigslist_listings %>% filter(!is.na(AREA_SQFT) & AREA_SQFT != 0)
+# craigslist_listings$PRICE_PER_SQFT<-craigslist_listings$PRICE / craigslist_listings$AREA_SQFT
+
+#Aggregations
+
+ct_listings<-data.frame(table(craigslist_listings$CT_ID_10))
+colnames(ct_listings)<-c("CT_ID_10", "COUNT")
+
+# Price
+ct_price_avg<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_PRICE=mean(PRICE))
+
+ct_price_min<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MIN_PRICE=min(PRICE))
+
+ct_price_max<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MAX_PRICE=max(PRICE))
+
+ct_price<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_PRICE=mean(PRICE),
+            MIN_PRICE=min(PRICE),
+            MAX_PRICE=max(PRICE),
+            PRICE_OUTLIERS=(sum(PRICE < 300)))
+
+ct_price$PRICE_OUTLIERS<-ifelse(ct_price$PRICE_OUTLIERS>0, 1,0)
+
+# Square Ft
+ct_sqft<-filter(craigslist_listings, !is.na(AREA_SQFT) & AREA_SQFT<3000)
+ct_sqft<-ct_sqft %>%
+  group_by(CT_ID_10) %>%
+  summarise(AVG_SQFT=mean(AREA_SQFT, na.rm = TRUE),
+            MIN_SQFT=min(AREA_SQFT, na.rm = TRUE),
+            MAX_SQFT=max(AREA_SQFT, na.rm = TRUE),
+            SQFT_outliers=(sum((AREA_SQFT > 3000) | (AREA_SQFT < 150))))
+
+ct_sqft$SQFT_outliers<-ifelse(ct_sqft$SQFT_outliers>0,1,0)
+
+# Section 8
+craigslist_listings$SECTION_8 <- as.integer(grepl('section 8', craigslist_listings$BODY, fixed = FALSE, ignore.case = TRUE) | grepl('voucher', craigslist_listings$BODY, fixed = FALSE, ignore.case = TRUE))
+craigslist_listings$NO_SECTION_8 <- as.integer(grepl('No section 8', craigslist_listings$BODY, fixed = TRUE) | grepl('no section 8', craigslist_listings$BODY, fixed = TRUE))
+
+ct_sec8<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(NO_SECTION_8=sum(NO_SECTION_8),
+            SECTION_8_MENTIONS=sum(SECTION_8))
+
+ct_sec8$YES_SECTION_8<-(ct_sec8$SECTION_8_MENTIONS - ct_sec8$NO_SECTION_8)
+
+ct_sec8$PER_YES_SECTION_8<-ct_sec8$YES_SECTION_8 / ct_listings$COUNT
+ct_sec8$PER_NO_SECTION_8<-ct_sec8$NO_SECTION_8 / ct_listings$COUNT
+
+# Missing meta data
+craigslist_listings$MISSING_DATA <- ifelse(is.na(craigslist_listings$AREA_SQFT) | (craigslist_listings$LOCATION == ''), 1, 0)
+
+ct_missing_data<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(MISSING_DATA=sum(MISSING_DATA))
+
+# Body length
+craigslist_listings$BODY_STRING_COUNT <- str_count(craigslist_listings$BODY, '\\w+')
+craigslist_listings$BODY_STR_COUNT_LESS <- ifelse(craigslist_listings$BODY_STRING_COUNT < 15, 1, 0)
+craigslist_listings$BODY_STR_COUNT_OVER <- ifelse(craigslist_listings$BODY_STRING_COUNT > 1500, 1, 0)
+ct_body_str_count<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(BODY_STR_COUNT_LESS=sum(BODY_STR_COUNT_LESS),
+            BODY_STR_COUNT_OVER=sum(BODY_STR_COUNT_OVER),
+            AVG_BODY_STR=mean(BODY_STRING_COUNT))
+
+# Merge
+ct_stats<-merge(ct_listings, ct_price, by = 'CT_ID_10')
+ct_stats<-merge(ct_stats, ct_sqft, by ='CT_ID_10')
+ct_stats<-merge(ct_stats, ct_sec8, by ='CT_ID_10')
+ct_stats<-merge(ct_stats, ct_missing_data, by = 'CT_ID_10')
+ct_stats<-merge(ct_stats, ct_body_str_count, by = 'CT_ID_10')
+
+# ANOVA with redline
+# Calculate price per sqft
+ct_stats$PRICE_PER_SQFT<-ct_stats$AVG_PRICE/ct_stats$AVG_SQFT
+
+# Split into quartiles
+ct_stats<-ct_stats %>% mutate(quartile = ntile(PRICE_PER_SQFT, 4))
+names(ct_stats)[21]<-'PRICE_PER_SQFT_QUARTILE'
+
+# Boston map
+boston<-get_map(location=c(left = -71.193799, 
+                           bottom = 42.22, 
+                           right = -70.985746, 
+                           top = 42.43),
+                source="stamen")
+boston_map<-ggmap(boston)
+```
+
+## Executive Summary
+
+The affordable housing crisis disproportionately affects low-income families of color. One of the reasons for the inequity is because of the Homeowners' Loan Corporation's redlining map where areas that had a higher proportion of Black residents were given the lowest rating, leading to disinvestment. As wealthier white families moved outside of the city, Black families were forced to stay in their neighborhoods, further perpetuating and entrenching racial and economic segregation. This has lasting consequences today since areas that are predominantly wealthy and white and areas that are predominantly low-income with people of color still align with HOLC's redlining map. Although the housing crisis affects everyone, the redlining map ensured that the brunt of the consequences would fall on low-income families of color.
+
+As the affordable housing crisis continues to worsen, policymakers must evaluate the existing resources in place to find housing, especially for low-income families. One of the tools that prospective renters and landlords use is Craigslist. The Craigslist dataset consists of rental prices, location, square footage, description of the rental, and listing date. In addition to the existing measures, new measures such as percentage of listings that welcome Section 8 vouchers, body length, missing data (whether the listing is missing location information or square footage), and price per square foot were created. After calculating these new measures, they were then leveraged to construct a listing quality index which measures the quality of a listing from the perspective of a low-income searcher.
+
+Another resource that the government has leveraged to assist low-income households is the Housing Choice Voucher (HCV) program. The HCV program's goal is to allow low-income families to move into better-resourced areas. During this study using the Craigslist dataset, we find that families with vouchers are still limited to poorer neighborhoods. As the price per square feet increases, the percentage of listings that approve of Section 8 vouchers decreases. We also see that there is a statistically significant difference between the most expensive listings and the least expensive listings in the percentage of listings that accept Section 8 vouchers. This finding is further supported by the distribution of the listing quality index where the highest quality listings are in areas such as West Roxbury, Dorchester, Roxbury, Mattapan, and Hyde Park, further concentrating low-income families in poorer neighborhoods and preventing them from moving into better-resourced areas. In the end, policymakers must reconsider and reevaluate the existing tools available to help low-income families find housing.
+
+## Introduction
+
+With the affordable housing crisis affecting millions of households across the nation, Boston is not exempt from the problem. According to Zumper, the average rent for a 1-bedroom apartment in 2023 is \$2,700, a 6% increase from 2022 (Zumper 2023). For a two-person household at 80% AMI (\$89,750), they would be considered cost-burdened because they spend over 30% of their income on rent (Boston Planning and Development Agency 2023). The numbers are even starker for families at 50% AMI (\$56,100) who would spend 58% of their income on an average 1-bedroom apartment in Boston, and families at 30% AMI (\$44,900) who would spend 72% of their income (Boston Planning and Development Agency 2023).
+
+High rents not only prevent low to moderate income families from finding affordable homes, but they perpetuate racial and economic segregation because poor families of color are limited to neighborhoods with fewer resources and public goods. Beyond the lack of accessibility, Black renters face discrimination in the housing search process. Based on a study from Suffolk University, "Black renters experienced discrimination by real estate brokers and landlords in 71 percent of cases tested" (Irons 2020). White renters could easily arrange apartment viewings (80% of the time), whereas Black renters could only visit potential apartments 48% of the time.
+
+For voucher holders, Suffolk University found prevalent and blatant discrimination. The goal of the voucher program is to allow low-income families to move into better-resourced communities. However, the discrimination against voucher holders actively keeps families out of richer neighborhoods. Suffolk University reported that "about 40 percent of the time, the housing provider stopped communicating with testers altogether after the testers revealed they intended to use vouchers" (Suffolk University 2020). Furthermore, voucher holders are faced with additional constraints such as tight timelines, existing poor housing conditions, negligent landlords, and potential evictions (DeLuca et. al 2013).
+
+Given Boston's high rents and low-income renters' obstacles to finding affordable housing, this study will explore the following key topics:
+
+-   The impact of HOLC's maps and redlining on Boston's rental market today
+
+-   Whether families with vouchers can successfully move to better-resourced neighborhoods with vouchers
+
+-   The overall housing search experience for low-income renters using Craigslist
+
+## Data & Methods
+
+#### Redlining
+
+In addition to the craigslist data, I also utilized the redlining map provided by BARI. The redlining map shows the areas in Boston where the Homeowners' Loan Corporation (HOLC) deemed certain neighborhoods as risky for investments from 1935 to 1950. Areas with Black families were given the lowest rating and families were not given loans to buy homes in those areas.
+
+Figure 1 shows HOLC's map of Boston. The only area that had an A rating is in Jamaica Plain which neighbors the affluent city of Brookline. The areas that were given a D rating are predominantly in Roxbury and the South End, as well as parts of South Boston. The neighborhood of Dorchester was primarily given a C rating, with some parts rated as D as well. However, on its own, the redlining map can only share a portion of the story. To understand its impact today, we must also look at Boston's demographics today.
+
+```{r echo=FALSE}
+# Redline map
+redline_map<-boston_map + geom_sf(data=redline, aes(fill=holc_grade), inherit.aes = FALSE) +
+  scale_fill_manual(values = c("green", "blue", "yellow", "red")) +
+  labs(fill = "Grades Assigned \nby the HOLC in 1938")
+redline_map
+```
+
+#### Craigslist Datasets
+
+The data used in this analysis is retrieved from the Boston Area Research Initiative (BARI) who scraped housing listings on Craigslist for Massachusetts from February 2020 until December 2021 (link). The variables within the data consist of listing ID, listing year, listing month, listing day, listing time, retrieved on, body, price, square footage, whether the listing allows pets, address, location, and census tract ID. Because the dataset contains information on all towns and cities across Massachusetts, I filtered the data to census tracts in Boston and in the Greater Boston area, leaving 43,257 listings. I then aggregated the data by census tract and calculated additional variables as described in **Table 1**.
+
+| Variable            | Description                                                                            |
+|-----------------------|-------------------------------------------------|
+| `AVG_PRICE`         | The average rental price of listings within the census tract                           |
+| `AVG_SQFT`          | The average square footage of listings within the census tract                         |
+| `PER_YES_SECTION_8` | Percentage of listings that approved and welcomed Section 8 voucher holders            |
+| `PER_NO_SECTION_8`  | Percentage of listings that do not welcome Section 8 voucher holders                   |
+| `MISSING_DATA`      | The number of listings missing either location or square footage information (or both) |
+| `AVG_BODY_STR`      | The average length of the body (description of the listings)                           |
+| `PRICE_PER_SQFT`    | The average price per square foot                                                      |
+
+: **Table 1.** Variables for the aggregated listings
+
+**Table 2** shows the summary of all the variables in the aggregated dataset. It is important to note that to calculate the PRICE_PER_SQFT, any listings that had an NA value for square footage was removed. In addition, any outliers (if the square footage was over 3,000 square feet or the price was less than \$300) were removed.
+
+Based on the data provided in the summary table, the average rent was \$2,395.40 and the average square footage was 980.5 square feet. The average length of the body was 159.7 words, and the average price per square foot was \$2.6/square feet. In terms of Section 8 vouchers, a majority of listings did not mention vouchers at all. Therefore, the mean is listed at 0%.
+
+**Table 2.** Summary table of variables from aggregated data
+
+```{r echo=FALSE}
+# Summary tables
+datasummary_skim(ct_stats[c('AVG_PRICE', 'AVG_SQFT', 'PER_YES_SECTION_8', 'PER_NO_SECTION_8', 'MISSING_DATA', 'AVG_BODY_STR', 'PRICE_PER_SQFT')])
+```
+
+#### Section 8 Vouchers
+
+Diving deeper into the variables related to Section 8, only 3.7% of Craigslist listings overall actively welcomed Section 8 vouchers. The percentage of listings that explicitly turned away voucher holders was very low (6.175e-05). Thus, the overwhelming majority of listings (\~96%) did not mention Section 8 at all. Additionally, the distribution of listings that welcome voucher holders is not even throughout the city of Boston. Figure 5 shows that the areas with a higher percentage of voucher approvals are in areas such as Hyde Park, Mattapan, Dorchester, and Roxbury, areas where rent might be lower as well.
+
+To determine if the difference between the percentage of Section 8 approval among rental prices across the city is significant, I first divided all of the census tracts into quartiles based on the price per square foot and then conducted an ANOVA test. The results are shown below. Since the p-value is less than 0.05, the results were statistically significant. After calculating the R\^2 value, the quartiles explained 6.36% of the differences.
+
+```{r echo=FALSE}
+# Anova
+aov_sec8<-aov(PER_YES_SECTION_8~as.factor(PRICE_PER_SQFT_QUARTILE), data=ct_stats)
+summary(aov_sec8)
+```
+
+Digging deeper with the post-hoc TukeyHSD test, we can see that the only significant difference was between quartile 4 (the highest price per square foot) and quartile 1 (the lowest price per square foot) with the p-value of 0.0087349. Therefore, there are no significant differences between the other quartiles. Figure 5 is a bar graph that shows the differences between the percentage of listings that welcome Section 8 vouchers across the four price per square footage quartiles.
+
+```{r echo=FALSE}
+# Visualizing
+means<-aggregate(PER_YES_SECTION_8~PRICE_PER_SQFT_QUARTILE,data=ct_stats,mean)
+
+# names(means)[1]='PRICE_PER_SQFT_QUARTILE'
+
+ses<-aggregate(PER_YES_SECTION_8~PRICE_PER_SQFT_QUARTILE,data=ct_stats,
+               function(x) sd(x, na.rm=TRUE/sqrt(length(!is.na(x)))))
+
+names(ses)[2]<-'se_PER_YES_SECTION_8'
+# names(ses)[1]<-'PRICE_PER_SQFT_QUARTILE'
+
+means<-merge(means,ses,by='PRICE_PER_SQFT_QUARTILE')
+
+means<-transform(means, lower=PER_YES_SECTION_8-1.96*se_PER_YES_SECTION_8, upper=PER_YES_SECTION_8+1.96*se_PER_YES_SECTION_8)
+
+bar<-ggplot(data=means,aes(x=PRICE_PER_SQFT_QUARTILE, y=PER_YES_SECTION_8))
+bar + geom_bar(stat="identity",position="dodge",fill="blue") +
+  ylab('Percentage of Listings \nThat Welcome Section 8 Vouchers') +
+  geom_errorbar(aes(ymax=upper, ymin=lower),
+                position=position_dodge(.9))
+
+```
+
+In addition to the ANOVA test, I ran correlations and created a regression model with PER_YES_SECTION_8 as the dependent variable and AVG_PRICE_PER_SQFT as the independent variable. The results of the correlations show that PER_YES_SECTION_8 has a negative correlation of -0.354 with AVG_PRICE_PER_SQFT, which means that as the price per square foot rises, the percentage of listings that welcome Section 8 vouchers decreases. Because the p-value was 5.783e-06, the results are statistically significant. Figure 6 shows the regression plot of price per square foot and percentage of listings that welcome Section 8.
+
+Looking at the regression plot, we can see that a majority of the tracts with a higher percentage of listings that welcome Section 8 vouchers are below \$3/square feet. Since a majority of the listings did not mention Section 8, let alone welcome them to begin with, the line remains relatively low (with a y-intercept of -3.540e-01).
+
+```{r echo=FALSE}
+# Price per square ft
+price_per_sqft_plot<-ggplot(data = ct_stats, aes(x=PRICE_PER_SQFT, y=PER_YES_SECTION_8)) +
+  geom_point() + xlab("Price per Square Ft") + ylab("Percentage of Section 8 Listings")
+price_per_sqft_plot + geom_smooth(method=lm)
+```
+
+#### Listing Quality Index
+
+Finally, to measure the overall quality of listings, I created a new variable called "LISTING_QUALITY_INDEX" based on latent constructs such as whether the price was reasonable, whether the listing contained metadata such as location and square footage, whether the body length was appropriate, and whether the listing mentioned Section 8. A more detailed description of construction of the LISTING_QUALITY_INDEX can be found in the Appendix. The overall goal of the listing quality index is to provide a measure for determining whether a listing is helpful and informative for a low-income renter and whether it could ultimately assist them in securing housing.
+
+The listing quality index is comprised of different scores: PRICE_SCORE, AREA_SQFT_SCORE, LOCATION_SCORE, BODY_SCORE, and SEC_8\_SCORE. The scores were then added up to construct the LISTING_QUALITY_INDEX, a process based on Connecticut Data Collaborative and Trinity College Liberal Action Lab's approach. Table 4 shows a summary of each score and the index.
+
+```{r echo=FALSE}
+# Calculate Price Score
+calculate_price_score<-function(PRICE) {
+  if (PRICE >= 1577 && PRICE <= 2023) {
+    score<-3
+  } else if (PRICE >= 1315 && PRICE < 1577) {
+    score<-2
+  } else if (PRICE > 2023) {
+    score<-1
+  } else if (PRICE >= 500 && PRICE < 1315) {
+    score<-1
+  } else {
+    score<-0
+  }
+  return(score)
+}
+
+craigslist_listings$PRICE_SCORE<-sapply(craigslist_listings$PRICE, calculate_price_score)
+
+# Calculate location score
+calculate_location_score<-function(LOCATION) {
+  if (LOCATION == "") {
+    score<-0
+  } else {
+    score<-1
+  }
+  return(score)
+}
+
+craigslist_listings$LOCATION_SCORE<-sapply(craigslist_listings$LOCATION, calculate_location_score)
+
+# Calculate Square footage score
+calculate_sqft_score<-function(AREA_SQFT) {
+  if (is.na(AREA_SQFT)) {
+    score<-0
+  } else {
+    if (AREA_SQFT >= 500 && AREA_SQFT <= 3000) {
+      score<-1
+    } else {
+      score<-0
+    }
+  }
+  return(score)
+}
+craigslist_listings$AREA_SQFT_SCORE<-sapply(craigslist_listings$AREA_SQFT, calculate_sqft_score)
+
+# Calculate listing description score
+calculate_body_score<-function(BODY_STRING_COUNT) {
+  if (BODY_STRING_COUNT > 15 && BODY_STRING_COUNT < 1500) {
+    score<-1
+  } else {
+    score<-0
+  }
+}
+craigslist_listings$BODY_SCORE<-sapply(craigslist_listings$BODY_STRING_COUNT, calculate_body_score)
+
+# Calculate section 8 score
+calculate_sec8_score<-function(SECTION_8, NO_SECTION_8) {
+  if (SECTION_8 == 1 && NO_SECTION_8==1) {
+    score<-0
+  } else if (SECTION_8 == 1 && NO_SECTION_8 == 0) {
+    score<-2
+  } else {
+    score<-1
+  }
+}
+craigslist_listings$SEC_8_SCORE<-mapply(calculate_sec8_score, craigslist_listings$SECTION_8, craigslist_listings$NO_SECTION_8)
+
+# Calculate listing quality index
+calculate_listing_quality_index<-function(PRICE_SCORE, AREA_SQFT_SCORE, LOCATION_SCORE, BODY_SCORE, SEC_8_SCORE) {
+  index<-PRICE_SCORE + AREA_SQFT_SCORE + LOCATION_SCORE + BODY_SCORE + SEC_8_SCORE
+  return(index)
+}
+craigslist_listings$LISTING_QUALITY_INDEX<-mapply(calculate_listing_quality_index, craigslist_listings$PRICE_SCORE, craigslist_listings$AREA_SQFT_SCORE, craigslist_listings$LOCATION_SCORE, craigslist_listings$BODY_SCORE, craigslist_listings$SEC_8_SCORE)
+
+# Calculate summary table
+datasummary_skim(craigslist_listings[c('PRICE_SCORE', 'AREA_SQFT_SCORE', 'LOCATION_SCORE', 'BODY_SCORE', 'SEC_8_SCORE', 'LISTING_QUALITY_INDEX')])
+
+# Aggregate Listing Quality Index
+ct_listing_quality_index<-craigslist_listings %>%
+  group_by(CT_ID_10) %>%
+  summarise(CT_LISTING_QUALITY_INDEX=mean(LISTING_QUALITY_INDEX))
+
+ct_stats<-merge(ct_stats, ct_listing_quality_index, by = 'CT_ID_10')
+
+```
+
+The summary table shows that the distribution of the LISTING_QUALITY_INDEX is relatively normal, with a mean of 5.9. Similarly, when aggregating the data by census tracts, the mean is 6.0. The distribution of the listing quality index across Boston can be seen in Figure 7. Based on the results, we can see that a majority of the listings with higher quality are in West Roxbury, Hyde Park, Mattapan, and Dorchester.
+
+```{r echo=FALSE}
+# Listing quality index map
+
+hcv<-st_read('../data/tracts/Housing_Choice_Vouchers_by_Tract/HOUSING_CHOICE_VOUCHERS_BY_TRACT.shp')
+hcv_boston<-hcv %>% filter(GEOID %in% census_tract_list_bos)
+
+colnames(hcv_boston)[colnames(hcv_boston) == 'GEOID'] = "CT_ID_10"
+ct_stats<-merge(hcv_boston, ct_stats, by = "CT_ID_10")
+
+listing_quality_index_map<-boston_map + geom_sf(data=ct_stats, aes(fill=CT_LISTING_QUALITY_INDEX), inherit.aes = FALSE) + 
+  scale_fill_gradient(high = "purple", low = "orange") + 
+  labs(fill = "Listing Quality Index")
+listing_quality_index_map
+
+```
+
+## Discussion
+
+#### Impact of Redlining on the Boston Housing Market Today
+
+The redlining map in Figure 1 shows which neighborhoods have been divested over the years. Because of this, we can see this reflected in the demographics of Boston where Black families are still more concentrated in previously redlined areas, and white families reside in areas that were not redlined. Comparing the redlining map with the listing quality index map (Figure 7), we can also see the remnants of redlining. Although the neighborhoods further south were not rated as D, they had a C rating which indicated that some immigrants and Black families were already living there. Thus, the area was also likely to be redlined as the maps changed. In the end, the HOLC maps created inequities that have a lasting consequence for today.
+
+#### Overall Craigslist Rental Scene
+
+With the average price of rent as shown in Table 2 \$2,395.40, it is no surprise that there is an acute affordable housing crisis in Boston. While wealthier families may be able afford the higher rents, low to moderate income families are left with few options. For families with vouchers, the search is even more difficult due to the discrimination they face and the limited number of landlords that are willing to take them. Although vouchers were meant to be a people-based solution, they still contribute to racial and economic segregation because voucher-holders are limited in their search. Additionally, the search is even more stressful for them because they have a short time window available to find housing before their voucher expires and they have to enter a years-long waiting list again. With such a low percentage of listings that actively welcome Section 8 vouchers (3.7%), and only in areas with existing Black communities, the low-income families with vouchers are constrained by time, money, and location, thus further perpetuating segregation.
+
+#### Section 8 Vouchers in the Craigslist Data
+
+The TukeyHSD test revealed that the only significant difference in percentage of listings within a census tract that welcomes Section 8 vouchers was between quartile 1 (the least expensive price per square foot) and quartile 4 (the most expensive price per square foot). Unsurprisingly, the neighborhoods in the 4th quartile consist of Back Bay, South End, South Boston, and neighborhoods that are adjacent to Brookline as seen in Figure 8. The neighborhoods in the first quartile are predominantly in neighborhoods such as Roxbury, Mattapan, parts of Dorchester, parts of Brighton, and East Boston.
+
+The Housing Choice Voucher (HCV) program was created after public housing was deemed a failure. The purpose of the HCV program was to leverage the private market to enable low-income families to move into better-resourced neighborhoods. However, we can see that there is a significant difference in the percentage of listings that approve vouchers between tracts at the lowest and highest ends of the price per square foot spectrum. This ultimately has implications for low-income households because they are limited to the lowest quartile, places with a low price per square foot. Moreover, the fact that low-income families do not have access to certain neighborhoods contributes to inequities in housing.
+
+The differences in percentage of listings that welcome Section 8 vouchers across price per square foot quartiles can also be seen in a regression model where price per square foot is the independent variable and the percentage of Section 8 listings is the dependent variable. Figure 6 reveals that as the price per square foot increases, the percentage of listings that approve Section 8 vouchers decreases. This perpetuates racial and economic segregation because it prevents poor families from moving to wealthier areas. Furthermore, it is important to note that a large portion of listings did not mention Section 8 vouchers at all which leaves low-income families in uncertainty and adds more time and confusion to their search
+
+```{r echo=FALSE}
+quartile_map<-boston_map + geom_sf(data=ct_stats, aes(fill=as.factor(PRICE_PER_SQFT_QUARTILE)), inherit.aes = FALSE) +
+  scale_fill_manual(values=c("green", "blue", "yellow", "red")) +
+  labs(fill = "Price per Square Ft Quartiles")
+
+quartile_map
+```
+
+#### Listing Quality Index
+
+Finally, the listing quality index is another tool that shows the inequities between census tracts. While the distribution is somewhat normal (as seen in Table 4), the distribution of listing quality across Boston is not distributed equally as seen in Figure 7. This means that not only are voucher holders limited to certain neighborhoods because of price, but also because of the quality of the listings on Craigslist. As families search for housing on Craigslist, they are constrained to specific neighborhoods due to the quality of the listing itself. Ultimately, this shows that Craigslist is not a tool meant for low-income families, especially those who are voucher holders. Additionally, landlords who are posting their listings on Craigslist likely do not have low-income families in mind.
+
+## Conclusion
+
+Revisiting the key topics of the paper as stated in the introduction, we can patterns of inequities in the Craigslist dataset. The HOLC's maps spurred segregation and divestment in neighborhoods with a predominantly Black population. Over the years, the impact of the map ensured that Black families were constrained to specific neighborhoods and were unable to accrue wealth, as seen through the demographic data and maps. Areas with a lower percentage of low to moderate income families were predominantly white, while areas with a higher percentage of low to moderate income families were predominantly Black.
+
+One of the solutions to address the patterns of segregation and inequities was the Housing Choice Voucher program which was meant to enable low-income families to move into higher income areas. However, as we saw in the ANOVA test and the bar graph, the distribution of listings that are willing to receive vouchers is not equal. Listings with a higher price per square foot had fewer listings that accepted vouchers, which ultimately prevents families from moving into specific neighborhoods. This is further supported by the regression model with price per square foot and percentage of listings that accept Section 8 vouchers where as the price per square foot rises, the percentage of listings that accept Section 8 vouchers fall. Therefore, this shows that families that hold vouchers are still limited to poorer neighborhoods.
+
+Finally, the overall listing quality varies across the city. Listings with information that is helpful for low-income searchers are more concentrated in specific neighborhoods. This further prevents families with vouchers from moving into better-resourced areas. Additionally, low quality listings have repercussions for families with vouchers because of the limited time they have to search for apartments. Low-income renters cannot waste valuable time sifting through low-quality listings, which ultimately means that Craigslist as a rental tool is not meant for them. Policymakers must ensure that low-income families have the tools necessary to find housing in any neighborhood that they desire. Moreover, policymakers should revisit the HCV program and evaluate whether it is meeting the program's goals
+
+## References
+
+"Boston, MA Rent Prices." Zumper. April 19th, 2023. <https://www.zumper.com/rent-research/boston-ma>
+
+"Income, Asset, and Price Limits." Boston Planning & Development Agency. Accessed April 19th, 2023. <https://www.bostonplans.org/housing/income-asset-and-price-limits>
+
+Irons, Meghan E. "Researchers expected 'outrageously high' discrimination against Black renters. What they found was worse than imagined." July 1, 2020. The Boston Globe. <https://www.bostonglobe.com/2020/07/01/metro/blacks-voucher-holders-face-egregious-housing-discrimination-study-says/>
+
+"Qualified Renters Need Not Apply." June 26, 2020. Suffolk University. <https://www.suffolk.edu/news-features/news/2020/06/27/01/03/qualified-renters-need-not-apply>
+
+DeLuca, Stephanie, Philip M. E. Garboden, and Peter Rosenblatt. "Segregating Shelter: How Housing Policies Shape the Residential Locations of Low-Income Minority Families." The Annals of the American Academy of Political and Social Science 657, <https://www.jstor.org/stable/23479104>
+
+## Appendix
+
+#### Listing Quality Score Methodology
+
+To determine the components that make up rental listing quality, I first created a list of guiding questions:
+
+-   Does the rental price make sense for the Boston and Greater Boston area?
+
+-   Does the listing provide a location?
+
+-   Does the listing provide a square footage value, and does it make sense?
+
+-   Is the listing description unusually long or short?
+
+-   Does the listing mention Section 8/Housing Choice Vouchers?
+
+For each guiding question, I aligned it with a variable in the dataset as seen in the table below.
+
+| Guiding Question                                                         | Variable                    |
+|--------------------------------------------------|----------------------|
+| Does the rental price make sense for the Boston and Greater Boston area? | `PRICE`                     |
+| Does the listing provide a location?                                     | `LOCATION`                  |
+| Does the listing provide a square footage value, and does it make sense? | `AREA_SQFT`                 |
+| Is the listing description unusually short or long?                      | `BODY_STRING_COUNT`         |
+| Does the listing mention Section 8/Housing Choice Vouchers?              | `SECTION_8`, `NO_SECTION_8` |
+
+*Price Score*
+
+For the listing price, I divided the prices into three categories: unrealistically low prices, prices that make sense for low-income families, and prices that are out of reach for low-income families. For the purposes of this document, I will continue this process from the perspective of a low-income family requiring a 2 bedroom apartment. According to HUD home rental limits, the appropriate price range would be between \$1,577 and \$2,023 in the Boston/Cambridge/Quincy area. Therefore, I will assign a price score of 3 for any listing that is between that range. For listings between \$1,315 and \$1,577, I assigned the value of 2 because it is the lower limit of 1 bedroom to the lower limit of a 2 bedroom. Although families would ideally prefer to have more space, a one bedroom is still feasible.
+
+For prices above \$2,023, the upper limit of a 2 bedroom, I assigned a value of 1 because the prices are likely legitimate, but out of range for low-income families searching for a 2 bedroom apartment. I also assigned a value of 1 for prices between \$500 and \$1,315. Although it is unlikely that we'd find a listing for a one bedroom or studio for less than \$1,315, these prices are legitimate because they could be listings for one bedroom within a multi-bedroom unit. However, this situation is not ideal for an entire family, especially with children. Finally, I assigned a value of 1 to any listings with a price below \$500 since they are price outliers and unrealistic for the city of Boston, ultimately indicating a low effort post. The price scores are summarized in the table below.
+
+| Price Values              | Price Score | Reasoning                                                      |
+|---------------------------|-------------|----------------------------------------------------------------|
+| \$1,577 - \$2,023         | 3           | Within the range of HUD recommended rent limits                |
+| \$1,315 - \$1,577         | 2           | Lower limit of 1 bedroom to lower limit of 2 bedroom           |
+| \>\$2,023                 | 1           | Legitimate prices, but out of the range of low-income families |
+| Between \$500 and \$1,315 | 1           | Legitimate prices, but not feasible for a low-income family    |
+| \<\$500                   | 0           | Price outliers for the city of Boston and surrounding areas    |
+
+*Location Score*
+
+For the location, I will simply assign the listing a value of 1 if it contains a location and a value of 0 if it does not. This is because while the location is helpful, its information may already be highlighted in the body, which can provide more helpful detail on where the listing is located.
+
+*Square Footage Score*
+
+In terms of square footage, I assigned the listing a value of 1 if it contained a square footage value that was between 500 square feet and 3,000 square feet. If a listing was considered an outlier (values that did not make sense) or did not have a value, then I assigned it a value of 0. Like the location, this information may already be highlighted in the body with more detail.
+
+*Listing Description Score*
+
+Although most listings have appropriate descriptions, there are some that do not contain enough detail, and others that contain too much information. As a renter who is trying to rapidly find housing, they do not have the time to sift through too much information, nor do they want to risk trusting a listing that does not provide enough information. Therefore, any listings with less than 15 words and any listings with greater than 1500 words in the body will be given a score of 0, and listings that fall in between those values will receive a score of 1.
+
+*Section 8 Mentions*
+
+Finally, for listings that mention Section 8 in a positive light (welcoming voucher holders), I will assign them a value of 2. For listings that do not mention Section 8 at all, I will assign a value of 1 since although the brokers/landlords may still approve voucher holders without explicitly mentioning it. For listings that say “No section 8”, I will assign a value of 0 because it is explicitly discriminating against voucher-holders.
+
+*Calculating the Index*
+
+To calculate the index, I added the different scores as recommended by the Connecticut Data Collaborative and Trinity College Liberal Action Lab.
+
