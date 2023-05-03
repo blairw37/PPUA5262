@@ -76,7 +76,9 @@ craigslist_listings_subset<-craigslist_listings_subset %>% mutate(PRICE_PER_SQ_F
 craigslist_listings_subset$LISTING_MONTH_NUM<-match(craigslist_listings_subset$LISTING_MONTH, month.name)
 craigslist_listings_subset<-unite(craigslist_listings_subset, col="LISTING_YR_MONTH", c('LISTING_YEAR', 'LISTING_MONTH_NUM'), sep='-')
 craigslist_listings_subset$LISTING_DATE<-as.Date(paste(craigslist_listings_subset$LISTING_YR_MONTH,"-01",sep=""))
+```
 
+```{r freq_plot, echo=FALSE}
 date_freq <- as.data.frame(table(craigslist_listings_subset$LISTING_DATE))
 names(date_freq)[1] = "LISTING_DATE"
 names(date_freq)[2] = "FREQ"
@@ -87,14 +89,14 @@ date_freq_plot
 
 The first box plot visualization shows the top five census tracts with the highest average price per square foot. Each red dot represents a specific listing. The second box plot visualization shows the same, except with the bottom five census tracts (the lowest average price per square foot), and each blue dot represents a listing. It is interesting to note that the census tracts with higher price per square foot values have significantly more listing than the census tracts with the lowest values. This ultimately provides an interesting insight into the landlords/brokers and potential tenants who use Craigslist as a means of finding a rental as it shows that Craigslist is perhaps more frequently used in more expensive areas.
 
-```{r echo=FALSE}
+```{r boxplot1, echo=FALSE}
 # Box plot
 craigslist_listings_subset_box<-filter(craigslist_listings_subset, CT_ID_10_SUB == "010104" | CT_ID_10_SUB =="353102" | CT_ID_10_SUB == "070402" | CT_ID_10_SUB == "010600" | CT_ID_10_SUB == "010701")
 box_dot_plot_top<-ggplot(craigslist_listings_subset_box, aes(CT_ID_10_SUB, PRICE_PER_SQ_FT)) + geom_boxplot() + geom_dotplot(binaxis = 'y', stackdir = 'center', dotsize = .5, fill='red', binwidth = 0.15) + theme(axis.text.x = element_text(angle=45, vjust=0.5)) + labs(title= "Top 5 Average Price per Square Ft Census Tracts", x="Census Tracts", y="Price per Square Ft")
 box_dot_plot_top
 ```
 
-```{r echo=FALSE}
+```{r boxplot2, echo=FALSE}
 # Box plot
 craigslist_listings_subset_box<-filter(craigslist_listings_subset, CT_ID_10_SUB == "981100" | CT_ID_10_SUB =="100300" | CT_ID_10_SUB == "418003" | CT_ID_10_SUB == "090200" | CT_ID_10_SUB == "092400")
 box_dot_plot_bottom<-ggplot(craigslist_listings_subset_box, aes(CT_ID_10_SUB, PRICE_PER_SQ_FT)) + geom_boxplot() + geom_dotplot(binaxis = 'y', stackdir = 'center', dotsize = .5, fill='blue', binwidth = 0.15) + theme(axis.text.x = element_text(angle=45, vjust=0.5)) + labs(title= "Bottom 5 Average Price per Square Ft Census Tracts", x="Census Tracts", y="Price per Square Ft")
