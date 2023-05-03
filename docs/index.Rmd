@@ -122,3 +122,5 @@ The links below provide more detailed analyses into the Craigslist dataset.
 - [Comparing Groups](Module10.html)
 
 - [Regression](Module11.html)
+
+- Final Paper: [Using Craigslist Data to Evaluate the Housing Choice Voucher Program and the Overall Rental Scene in Boston](Final.html)
