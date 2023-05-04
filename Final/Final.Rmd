@@ -178,9 +178,39 @@ redline_map<-boston_map + geom_sf(data=redline, aes(fill=holc_grade), inherit.ae
 redline_map
 ```
 
-#### Craigslist Datasets
+#### Boston's Demographics Today
 
-The data used in this analysis is retrieved from the Boston Area Research Initiative (BARI) who scraped housing listings on Craigslist for Massachusetts from February 2020 until December 2021 (link). The variables within the data consist of listing ID, listing year, listing month, listing day, listing time, retrieved on, body, price, square footage, whether the listing allows pets, address, location, and census tract ID. Because the dataset contains information on all towns and cities across Massachusetts, I filtered the data to census tracts in Boston and in the Greater Boston area, leaving 43,257 listings. I then aggregated the data by census tract and calculated additional variables as described in **Table 1**.
+To understand the impact of redlining today, we must acknowledge the demographic differences across the city. Figure 2 shows a map of the percentage of Low to Moderate Income Population by census tract provided by HUD. The data is derived from the 2011 to 2015 American Community Survey. Figures 3 and 4 also shows the racial demographics across the city as provided by the Massachusetts Census Indicators from BARI.
+
+From Figure 2, we can see that the percentage of low to moderate income households is higher in areas that were redlined. Additionally, the area that was given an A grade had a low percentage of low to moderate income households. Looking at Figures 3 and 4, we see that redlined also have a higher percentage of Black residents. Similarly, in areas that were not redlined, there is a higher percentage of white residents. Figures 3 and 4 show that HOLC’s maps’ long-lasting legacy is segregation.
+
+```{r echo=FALSE}
+# Low to moderate income
+ltm_income_map<-boston_map + geom_sf(data=ltm_income[ltm_income$LOWMODPCT>0,], aes(fill=LOWMODPCT), inherit.aes = FALSE) +
+  scale_fill_gradient(high = "purple", low = "orange") + 
+  labs(fill = "Percentage of Low to Moderate Income")
+ltm_income_map
+
+# Demographics
+colnames(ltm_income)[colnames(ltm_income) == 'GEOID'] = 'CT_ID_10'
+census_indicators<-merge(ltm_income, census_indicators, by = "CT_ID_10")
+census_indicators$Black<-census_indicators$Black * 100
+census_indicators$White<-census_indicators$White * 100
+
+census_indicators_map_bl<-boston_map + geom_sf(data=census_indicators, aes(fill=Black), inherit.aes = FALSE) +
+  scale_fill_gradient(high = "purple", low = "orange") +
+  labs(fill = "Percentage Black Population")
+census_indicators_map_bl
+
+census_indicators_map_wh<-boston_map + geom_sf(data=census_indicators, aes(fill=White), inherit.aes = FALSE) +
+  scale_fill_gradient(high = "purple", low = "orange") +
+  labs(fill = "Percentage White Population")
+census_indicators_map_wh
+```
+
+#### Craigslist Dataset
+
+The data used in this analysis is retrieved from the Boston Area Research Initiative (BARI) who scraped housing listings on Craigslist for Massachusetts from February 2020 until December 2021. The variables within the data consist of listing ID, listing year, listing month, listing day, listing time, retrieved on, body, price, square footage, whether the listing allows pets, address, location, and census tract ID. Because the dataset contains information on all towns and cities across Massachusetts, I filtered the data to census tracts in Boston and in the Greater Boston area, leaving 43,257 listings. I then aggregated the data by census tract and calculated additional variables as described in **Table 1**.
 
 | Variable            | Description                                                                            |
 |-----------------------|-------------------------------------------------|
